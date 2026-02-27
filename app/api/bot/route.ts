@@ -133,7 +133,7 @@ privateChat.on("message:text", async (ctx) => {
       );
     }
     if (text === "🌐 لینک سایت") {
-      const ik = new InlineKeyboard().url("ورود به سایت", "https://www.bavarmandan.com/");
+      const ik = new InlineKeyboard().url("ورود به سایت", "#");
       return ctx.reply("برای بازدید از سایت ما کلیک کنید:", { reply_markup: ik });
     }
   }
