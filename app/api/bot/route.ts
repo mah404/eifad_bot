@@ -103,7 +103,6 @@ adminGroup.on("message:text", async (ctx) => {
 
 // Ignore any other message types in admin group (stickers, photos, etc.)
 adminGroup.on("message", () => {
-  /* no-op */
 });
 
 /* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
