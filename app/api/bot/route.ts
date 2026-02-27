@@ -31,7 +31,6 @@ const mainKeyboard = new Keyboard()
   .text("🔒 ارسال پیام به صورت ناشناس")
   .row()
   .text("ℹ️ درباره ما")
-  .text("🌐 لینک سایت")
   .resized()
   .persistent(true)
   .placeholder("یکی از گزینه‌ها را انتخاب کنید…");
@@ -41,7 +40,6 @@ const MENU_TEXTS = new Set([
   "💬 ارسال پیام",
   "🔒 ارسال پیام به صورت ناشناس",
   "ℹ️ درباره ما",
-  "🌐 لینک سایت",
 ]);
 
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
@@ -130,10 +128,6 @@ privateChat.on("message:text", async (ctx) => {
         "این پیام‌رسان جهت ارتباط مستقیم با مدیران مجموعه تهیه گردیده است. پیشاپیش از حسن استفاده شما قدردانی می‌نماییم.",
         { reply_markup: mainKeyboard }
       );
-    }
-    if (text === "🌐 لینک سایت") {
-      const ik = new InlineKeyboard().url("ورود به سایت", "آدرس سایت در اینحا قرار خواهد گرفت ");
-      return ctx.reply("برای بازدید از سایت ما کلیک کنید:", { reply_markup: ik });
     }
   }
 
