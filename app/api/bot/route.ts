@@ -132,7 +132,7 @@ privateChat.on("message:text", async (ctx) => {
       );
     }
     if (text === "🌐 لینک سایت") {
-      const ik = new InlineKeyboard().url("ورود به سایت", "#");
+      const ik = new InlineKeyboard().url("ورود به سایت", "آدرس سایت در اینحا قرار خواهد گرفت ");
       return ctx.reply("برای بازدید از سایت ما کلیک کنید:", { reply_markup: ik });
     }
   }
