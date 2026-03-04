@@ -112,6 +112,8 @@ adminGroup.on("message", () => {});
 // Menu navigation & states
 privateChat.on("message:text", async (ctx) => {
   const text = ctx.message.text;
+    if (text.startsWith("/")) return;
+
   const state = userStates.get(ctx.from.id);
 
   /* ────── Menu entries (the only way to set a state) ────── */
