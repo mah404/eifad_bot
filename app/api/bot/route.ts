@@ -35,9 +35,9 @@ const mainKeyboard = new Keyboard()
   .placeholder("یکی از گزینه‌ها را انتخاب کنید…");
 
 const MENU_TEXTS = new Set([
-  "📄 ارسال فایل PDF",
   "💬 ارسال پیام به صورت شناس",
   "🔒 ارسال پیام به صورت ناشناس",
+  "📄 ارسال فایل PDF",
 ]);
 
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
