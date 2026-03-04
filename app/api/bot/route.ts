@@ -30,6 +30,19 @@ type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 
 const userStates = new Map<number, UserState>(); // per-user flow state (only for private chats)
 const messageMap = new Map<number, number>(); // groupMessageId -> userId (for admin replies)
+
+const anonCodes = new Map<number, string>(); // userId -> anonymous code (stable)
+
+function getAnonCode(userId: number) {
+  let code = anonCodes.get(userId);
+  if (!code) {
+    code = `ANON-${userId.toString(36).toUpperCase()}`;
+    anonCodes.set(userId, code);
+  }
+  return code;
+}
+
+
 /* ─────────────────────  UI  ───────────────────── */
 const mainKeyboard = new Keyboard()
   .text("💬 ارسال پیام به صورت شناس")
@@ -166,7 +179,7 @@ privateChat.on("message:text", async (ctx) => {
         : "بدون‌نام کاربری";
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `پیام از ${displayName} (${username}):\n${ctx.message.text}`,
+        `Telegram ID: ${ctx.from.id}\nپیام از ${displayName} (${username}):\n${ctx.message.text}`,
       );
       messageMap.set(sent.message_id, ctx.from.id);
       await ctx.reply("پیام شما ارسال گردید.✅", {
@@ -187,7 +200,7 @@ privateChat.on("message:text", async (ctx) => {
     try {
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `پیام ناشناس:\n${ctx.message.text}`,
+        `کد ناشناس: ${getAnonCode(ctx.from.id)}\nپیام ناشناس:\n${ctx.message.text}`,
       );
       messageMap.set(sent.message_id, ctx.from.id);
       await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
@@ -217,9 +230,12 @@ privateChat.on("message", async (ctx, next) => {
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
-    await ctx.reply("❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌", {
-      reply_markup: mainKeyboard,
-    });
+    await ctx.reply(
+      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
+      {
+        reply_markup: mainKeyboard,
+      },
+    );
     return;
   }
 
