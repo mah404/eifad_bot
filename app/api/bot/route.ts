@@ -74,9 +74,14 @@ bot.use((ctx, next) => {
 bot.command("start", async (ctx) => {
   if (ctx.chat?.type !== "private") return; // ignore /start outside private chats
 
-  await ctx.reply(" لطفاً یکی از گزینه های زیر را انتخاب نمایید.", {
-    reply_markup: mainKeyboard,
-  });
+  await ctx.reply(
+    `با عرض سلام مجدد،
+
+جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید. 
+
+با تشکر`,
+    { reply_markup: mainKeyboard },
+  );
 });
 
 /* ─────────────────────  ADMIN GROUP LOGIC  ─────────────────────
@@ -108,6 +113,7 @@ adminGroup.on("message", () => {});
 privateChat.on("message:text", async (ctx) => {
   const text = ctx.message.text;
   const state = userStates.get(ctx.from.id);
+  if (text.startsWith("/")) return;
 
   /* ────── Menu entries (the only way to set a state) ────── */
   if (MENU_TEXTS.has(text)) {
@@ -209,6 +215,10 @@ privateChat.on("message:text", async (ctx) => {
 // Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
   const state = userStates.get(ctx.from.id);
+
+  const maybeText = (ctx.message as any)?.text;
+  if (typeof maybeText === "string" && maybeText.startsWith("/")) return;
+
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
