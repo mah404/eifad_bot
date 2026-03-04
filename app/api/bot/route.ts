@@ -239,46 +239,65 @@ privateChat.on("message", async (ctx, next) => {
     );
     return;
   }
-   //Voice Message
-     // Handle voice messages (when user chose شناس / ناشناس)
+  // Handle VOICE messages for known/anonymous flows
   const voice = ctx.message?.voice;
-  if (voice && (state === "awaiting_text" || state === "awaiting_anonymous_text")) {
+
+  if (voice && state === "awaiting_text") {
     try {
-      if (state === "awaiting_text") {
-        const displayName = ctx.from.first_name ?? "کاربر";
-        const username = ctx.from.username ? `@${ctx.from.username}` : "بدون‌نام کاربری";
+      const displayName = ctx.from.first_name ?? "کاربر";
+      const username = ctx.from.username ? `@${ctx.from.username}` : "بدون‌نام کاربری";
 
-        await ctx.api.sendMessage(
-          TARGET_CHANNEL,
-          `Telegram ID: ${ctx.from.id}\nپیام صوتی از ${displayName} (${username}):`,
-        );
-      }
+      const header = await ctx.api.sendMessage(
+        TARGET_CHANNEL,
+        `Telegram ID: ${ctx.from.id}\nپیام از ${displayName} (${username}):`,
+      );
 
-      if (state === "awaiting_anonymous_text") {
-        await ctx.api.sendMessage(
-          TARGET_CHANNEL,
-          `Telegram ID: ${ctx.from.id}\nپیام صوتی ناشناس:`,
-        );
-      }
-
-      const sent = await ctx.api.forwardMessage(
+      const copied = await ctx.api.copyMessage(
         TARGET_CHANNEL,
         ctx.chat.id,
         ctx.message.message_id,
+        { reply_to_message_id: header.message_id },
       );
 
-      messageMap.set(sent.message_id, ctx.from.id);
+      messageMap.set(header.message_id, ctx.from.id);
+      messageMap.set(copied.message_id, ctx.from.id);
 
-      await ctx.reply("پیام صوتی شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      await ctx.reply("پیام شما ارسال گردید.✅", { reply_markup: mainKeyboard });
       userStates.delete(ctx.from.id);
     } catch {
-      await ctx.reply("❌ خطا در ارسال پیام صوتی. دوباره تلاش کنید.", {
-        reply_markup: mainKeyboard,
-      });
-      // keep state to retry
+      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", { reply_markup: mainKeyboard });
+      // keep state so they can retry
     }
     return;
   }
+
+  if (voice && state === "awaiting_anonymous_text") {
+    try {
+      const header = await ctx.api.sendMessage(
+        TARGET_CHANNEL,
+        `Telegram ID: ${ctx.from.id}\nپیام ناشناس:`,
+      );
+
+      const copied = await ctx.api.copyMessage(
+        TARGET_CHANNEL,
+        ctx.chat.id,
+        ctx.message.message_id,
+        { reply_to_message_id: header.message_id },
+      );
+
+      messageMap.set(header.message_id, ctx.from.id);
+      messageMap.set(copied.message_id, ctx.from.id);
+
+      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
+      });
+      // keep state
+    }
+    return;
+  }   
 
 
 
