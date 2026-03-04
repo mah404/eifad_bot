@@ -113,7 +113,6 @@ adminGroup.on("message", () => {});
 privateChat.on("message:text", async (ctx) => {
   const text = ctx.message.text;
   const state = userStates.get(ctx.from.id);
-  if (text.startsWith("/start")) return;
 
   /* ────── Menu entries (the only way to set a state) ────── */
   if (MENU_TEXTS.has(text)) {
@@ -215,10 +214,6 @@ privateChat.on("message:text", async (ctx) => {
 // Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
   const state = userStates.get(ctx.from.id);
-
-  const maybeText = (ctx.message as any)?.text;
-  if (typeof maybeText === "string" && maybeText.startsWith("/start")) return;
-
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
