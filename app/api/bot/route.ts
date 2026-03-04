@@ -228,6 +228,9 @@ ${ctx.message.text}`,
 // Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
   const state = userStates.get(ctx.from.id);
+    const t = (ctx.message as any)?.text;
+  if (typeof t === "string" && MENU_TEXTS.has(t)) return;
+
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
@@ -297,9 +300,7 @@ privateChat.on("message", async (ctx, next) => {
       // keep state
     }
     return;
-  }   
-
-
+  }
   // Handle the PDF upload state
   if (state === "awaiting_file") {
     const doc = ctx.message?.document;
