@@ -42,7 +42,6 @@ function getAnonCode(userId: number) {
   return code;
 }
 
-
 /* ─────────────────────  UI  ───────────────────── */
 const mainKeyboard = new Keyboard()
   .text("💬 ارسال پیام به صورت شناس")
@@ -200,7 +199,9 @@ privateChat.on("message:text", async (ctx) => {
     try {
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `کد ناشناس: ${getAnonCode(ctx.from.id)}\nپیام ناشناس:\n${ctx.message.text}`,
+        `Telegram ID: ${ctx.from.id}
+پیام ناشناس:
+${ctx.message.text}`,
       );
       messageMap.set(sent.message_id, ctx.from.id);
       await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
