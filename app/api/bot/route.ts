@@ -300,8 +300,6 @@ privateChat.on("message", async (ctx, next) => {
   }   
 
 
-
-
   // Handle the PDF upload state
   if (state === "awaiting_file") {
     const doc = ctx.message?.document;
