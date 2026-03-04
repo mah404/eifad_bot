@@ -3,13 +3,7 @@
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-import {
-  Bot,
-  webhookCallback,
-  Keyboard,
-  InlineKeyboard,
-  Composer,
-} from "grammy";
+import { Bot, webhookCallback, Keyboard, Composer } from "grammy";
 import { type NextRequest } from "next/server";
 
 /* ─────────────────────  ENV & BOT  ───────────────────── */
@@ -136,7 +130,7 @@ privateChat.on("message:text", async (ctx) => {
     }
     if (text === "💬 ارسال پیام به صورت شناس") {
       userStates.set(ctx.from.id, "awaiting_text");
-      return ctx.reply("پیام خود را وارد نمایید.", {
+      return ctx.reply("پیام شناس خود را وارد نمایید.", {
         reply_markup: mainKeyboard,
       });
     }
@@ -228,9 +222,6 @@ ${ctx.message.text}`,
 // Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
   const state = userStates.get(ctx.from.id);
-    const t = (ctx.message as any)?.text;
-  if (typeof t === "string" && MENU_TEXTS.has(t)) return;
-
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
@@ -248,7 +239,9 @@ privateChat.on("message", async (ctx, next) => {
   if (voice && state === "awaiting_text") {
     try {
       const displayName = ctx.from.first_name ?? "کاربر";
-      const username = ctx.from.username ? `@${ctx.from.username}` : "بدون‌نام کاربری";
+      const username = ctx.from.username
+        ? `@${ctx.from.username}`
+        : "بدون‌نام کاربری";
 
       const header = await ctx.api.sendMessage(
         TARGET_CHANNEL,
@@ -265,10 +258,14 @@ privateChat.on("message", async (ctx, next) => {
       messageMap.set(header.message_id, ctx.from.id);
       messageMap.set(copied.message_id, ctx.from.id);
 
-      await ctx.reply("پیام شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      await ctx.reply("پیام شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
+      });
       userStates.delete(ctx.from.id);
     } catch {
-      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", { reply_markup: mainKeyboard });
+      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
+      });
       // keep state so they can retry
     }
     return;
@@ -291,7 +288,9 @@ privateChat.on("message", async (ctx, next) => {
       messageMap.set(header.message_id, ctx.from.id);
       messageMap.set(copied.message_id, ctx.from.id);
 
-      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
+      });
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {

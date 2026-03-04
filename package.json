@@ -9,7 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "grammy": "^1.40.1",
+    "@grammyjs/storage-redis": "^2.5.1",
+    "@types/ioredis": "^4.28.10",
+    "grammy": "^1.41.1",
+    "ioredis": "^5.10.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
