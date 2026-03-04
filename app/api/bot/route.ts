@@ -239,6 +239,49 @@ privateChat.on("message", async (ctx, next) => {
     );
     return;
   }
+   //Voice Message
+     // Handle voice messages (when user chose شناس / ناشناس)
+  const voice = ctx.message?.voice;
+  if (voice && (state === "awaiting_text" || state === "awaiting_anonymous_text")) {
+    try {
+      if (state === "awaiting_text") {
+        const displayName = ctx.from.first_name ?? "کاربر";
+        const username = ctx.from.username ? `@${ctx.from.username}` : "بدون‌نام کاربری";
+
+        await ctx.api.sendMessage(
+          TARGET_CHANNEL,
+          `Telegram ID: ${ctx.from.id}\nپیام صوتی از ${displayName} (${username}):`,
+        );
+      }
+
+      if (state === "awaiting_anonymous_text") {
+        await ctx.api.sendMessage(
+          TARGET_CHANNEL,
+          `Telegram ID: ${ctx.from.id}\nپیام صوتی ناشناس:`,
+        );
+      }
+
+      const sent = await ctx.api.forwardMessage(
+        TARGET_CHANNEL,
+        ctx.chat.id,
+        ctx.message.message_id,
+      );
+
+      messageMap.set(sent.message_id, ctx.from.id);
+
+      await ctx.reply("پیام صوتی شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام صوتی. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
+      });
+      // keep state to retry
+    }
+    return;
+  }
+
+
+
 
   // Handle the PDF upload state
   if (state === "awaiting_file") {
