@@ -3,32 +3,40 @@
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-import { Bot, webhookCallback, Keyboard, InlineKeyboard, Composer } from "grammy";
+import {
+  Bot,
+  webhookCallback,
+  Keyboard,
+  InlineKeyboard,
+  Composer,
+} from "grammy";
 import { type NextRequest } from "next/server";
 
 /* ─────────────────────  ENV & BOT  ───────────────────── */
 const token = process.env.TELEGRAM_BOT_TOKEN;
-if (!token) throw new Error("TELEGRAM_BOT_TOKEN environment variable not found.");
+if (!token)
+  throw new Error("TELEGRAM_BOT_TOKEN environment variable not found.");
 
 const bot = new Bot(token);
 
 // ⚠️ Admin group/supergroup chat id (string form, keep the minus):
 
 const TARGET_CHANNEL = process.env.SUPPORT_GROUP_ID;
-if (!TARGET_CHANNEL) throw new Error("TARGET_CHANNEL environment variable not found.");
+if (!TARGET_CHANNEL)
+  throw new Error("TARGET_CHANNEL environment variable not found.");
 
 /* ─────────────────────  STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 
-const userStates = new Map<number, UserState>();      // per-user flow state (only for private chats)
-const messageMap = new Map<number, number>();         // groupMessageId -> userId (for admin replies)
+const userStates = new Map<number, UserState>(); // per-user flow state (only for private chats)
+const messageMap = new Map<number, number>(); // groupMessageId -> userId (for admin replies)
 /* ─────────────────────  UI  ───────────────────── */
 const mainKeyboard = new Keyboard()
-  .text("📄 ارسال فایل PDF")
-  .row()
   .text("💬 ارسال پیام به صورت شناس")
   .row()
   .text("🔒 ارسال پیام به صورت ناشناس")
+  .row()
+  .text("📄 ارسال فایل PDF")
   .row()
   .resized()
   .persistent(true)
@@ -41,8 +49,8 @@ const MENU_TEXTS = new Set([
 ]);
 
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
-const adminGroup = new Composer();   // messages from the admin group/supergroup
-const privateChat = new Composer();  // messages from private (user) chats
+const adminGroup = new Composer(); // messages from the admin group/supergroup
+const privateChat = new Composer(); // messages from private (user) chats
 
 bot.use((ctx, next) => {
   const chatId = ctx.chat?.id?.toString();
@@ -72,7 +80,7 @@ bot.command("start", async (ctx) => {
 جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید. 
 
 با تشکر`,
-    { reply_markup: mainKeyboard }
+    { reply_markup: mainKeyboard },
   );
 });
 
@@ -98,8 +106,7 @@ adminGroup.on("message:text", async (ctx) => {
 });
 
 // Ignore any other message types in admin group (stickers, photos, etc.)
-adminGroup.on("message", () => {
-});
+adminGroup.on("message", () => {});
 
 /* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
 // Menu navigation & states
@@ -111,31 +118,40 @@ privateChat.on("message:text", async (ctx) => {
   if (MENU_TEXTS.has(text)) {
     if (text === "📄 ارسال فایل PDF") {
       userStates.set(ctx.from.id, "awaiting_file");
-      return ctx.reply("لطفاً فایل PDF خود را ارسال کنید.", { reply_markup: mainKeyboard });
+      return ctx.reply("لطفاً فایل PDF خود را ارسال کنید.", {
+        reply_markup: mainKeyboard,
+      });
     }
     if (text === "💬 ارسال پیام به صورت شناس") {
       userStates.set(ctx.from.id, "awaiting_text");
-      return ctx.reply("پیام خود را وارد نمایید.", { reply_markup: mainKeyboard });
+      return ctx.reply("پیام خود را وارد نمایید.", {
+        reply_markup: mainKeyboard,
+      });
     }
     if (text === "🔒 ارسال پیام به صورت ناشناس") {
       userStates.set(ctx.from.id, "awaiting_anonymous_text");
-      return ctx.reply("پیام ناشناس خود را وارد نمایید.", { reply_markup: mainKeyboard });
+      return ctx.reply("پیام ناشناس خود را وارد نمایید.", {
+        reply_markup: mainKeyboard,
+      });
     }
 
     // previous option kept, but disabled (not part of UI anymore)
     if (false && text === "ℹ️ درباره ما") {
       return ctx.reply(
         "این پیام‌رسان جهت ارتباط مستقیم با مدیران مجموعه تهیه گردیده است. پیشاپیش از حسن استفاده شما قدردانی می‌نماییم.",
-        { reply_markup: mainKeyboard }
+        { reply_markup: mainKeyboard },
       );
     }
   }
 
   /* ────── If no state was chosen yet, nudge user to pick a menu item ────── */
   if (!state) {
-    return ctx.reply("❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌", {
-      reply_markup: mainKeyboard,
-    });
+    return ctx.reply(
+      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
+      {
+        reply_markup: mainKeyboard,
+      },
+    );
   }
 
   /* ────── State-based processing ────── */
@@ -145,16 +161,22 @@ privateChat.on("message:text", async (ctx) => {
     // safety: in this handler we're already in message:text
     try {
       const displayName = ctx.from.first_name ?? "کاربر";
-      const username = ctx.from.username ? `@${ctx.from.username}` : "بدون‌نام کاربری";
+      const username = ctx.from.username
+        ? `@${ctx.from.username}`
+        : "بدون‌نام کاربری";
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `پیام از ${displayName} (${username}):\n${ctx.message.text}`
+        `پیام از ${displayName} (${username}):\n${ctx.message.text}`,
       );
       messageMap.set(sent.message_id, ctx.from.id);
-      await ctx.reply("پیام شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      await ctx.reply("پیام شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
+      });
       userStates.delete(ctx.from.id);
     } catch {
-      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", { reply_markup: mainKeyboard });
+      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
+      });
       // keep state so they can retry
     }
     return;
@@ -163,9 +185,14 @@ privateChat.on("message:text", async (ctx) => {
   // 2) Expecting an anonymous text message
   if (state === "awaiting_anonymous_text") {
     try {
-      const sent = await ctx.api.sendMessage(TARGET_CHANNEL, `پیام ناشناس:\n${ctx.message.text}`);
+      const sent = await ctx.api.sendMessage(
+        TARGET_CHANNEL,
+        `پیام ناشناس:\n${ctx.message.text}`,
+      );
       messageMap.set(sent.message_id, ctx.from.id);
-      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", { reply_markup: mainKeyboard });
+      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
+      });
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
@@ -204,13 +231,17 @@ privateChat.on("message", async (ctx, next) => {
         const sent = await ctx.api.forwardMessage(
           TARGET_CHANNEL,
           ctx.chat.id,
-          ctx.message.message_id
+          ctx.message.message_id,
         );
         messageMap.set(sent.message_id, ctx.from.id);
-        await ctx.reply("فایل شما ارسال شد. متشکرم!", { reply_markup: mainKeyboard });
+        await ctx.reply("فایل شما ارسال شد. متشکرم!", {
+          reply_markup: mainKeyboard,
+        });
         userStates.delete(ctx.from.id); // clear after success
       } catch {
-        await ctx.reply("❌ خطا در ارسال فایل. دوباره تلاش کنید.", { reply_markup: mainKeyboard });
+        await ctx.reply("❌ خطا در ارسال فایل. دوباره تلاش کنید.", {
+          reply_markup: mainKeyboard,
+        });
         // keep state to retry
       }
       return;
