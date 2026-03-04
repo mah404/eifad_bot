@@ -217,7 +217,7 @@ privateChat.on("message", async (ctx, next) => {
 
   // If no state set yet, only nudge once for any non-menu input
   if (!state && ctx.chat.type === "private") {
-    await ctx.reply("برای شروع، یکی از گزینه‌ها را از منو انتخاب کنید.", {
+    await ctx.reply("❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌", {
       reply_markup: mainKeyboard,
     });
     return;
