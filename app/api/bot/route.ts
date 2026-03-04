@@ -74,14 +74,9 @@ bot.use((ctx, next) => {
 bot.command("start", async (ctx) => {
   if (ctx.chat?.type !== "private") return; // ignore /start outside private chats
 
-  await ctx.reply(
-    `با عرض سلام مجدد،
-
-جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید. 
-
-با تشکر`,
-    { reply_markup: mainKeyboard },
-  );
+  await ctx.reply(" لطفاً یکی از گزینه های زیر را انتخاب نمایید.", {
+    reply_markup: mainKeyboard,
+  });
 });
 
 /* ─────────────────────  ADMIN GROUP LOGIC  ─────────────────────
@@ -112,8 +107,6 @@ adminGroup.on("message", () => {});
 // Menu navigation & states
 privateChat.on("message:text", async (ctx) => {
   const text = ctx.message.text;
-    if (text.startsWith("/")) return;
-
   const state = userStates.get(ctx.from.id);
 
   /* ────── Menu entries (the only way to set a state) ────── */
