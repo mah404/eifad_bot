@@ -40,7 +40,7 @@ const mainKeyboard = new Keyboard()
   .row()
   .resized()
   .persistent(true)
-  .placeholder("یکی از گزینه‌ها را انتخاب کنید…");
+  .placeholder(" لطفاً یکی از گزینه های زیر را انتخاب نمایید.");
 
 const MENU_TEXTS = new Set([
   "💬 ارسال پیام به صورت شناس",
