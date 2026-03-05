@@ -169,13 +169,24 @@ adminGroup.on("message:text", async (ctx) => {
       return;
     }
 
-    const uid = messageMap.get(replied.message_id);
-    if (!uid) {
-      await ctx.reply("❌ این پیام به کاربری متصل نیست (روی پیامِ ارسال‌شده توسط بات Reply کنید).", {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
+let uid = messageMap.get(replied.message_id);
+
+// fallback: extract Telegram ID from message text
+if (!uid) {
+  const txt = replied.text || replied.caption;
+  const match = txt?.match(/Telegram ID:\s*(\d+)/);
+
+  if (match) {
+    uid = Number(match[1]);
+  }
+}
+
+if (!uid) {
+  await ctx.reply("❌ کاربر پیدا نشد.", {
+    reply_to_message_id: ctx.message.message_id,
+  });
+  return;
+}
 
     if (txt === "/block") {
       blockedUsers.set(uid, null);
