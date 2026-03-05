@@ -14,6 +14,7 @@ if (!token)
 const bot = new Bot(token);
 
 // ⚠️ Admin group/supergroup chat id (string form, keep the minus):
+
 const TARGET_CHANNEL = process.env.SUPPORT_GROUP_ID;
 if (!TARGET_CHANNEL)
   throw new Error("TARGET_CHANNEL environment variable not found.");
@@ -33,31 +34,6 @@ function getAnonCode(userId: number) {
     anonCodes.set(userId, code);
   }
   return code;
-}
-
-/* ─────────────────────  BLOCKING  ───────────────────── */
-// blockedUsers: userId -> untilEpochMs (null = permanent)
-const blockedUsers = new Map<number, number | null>();
-
-function isBlocked(userId: number) {
-  const until = blockedUsers.get(userId);
-  if (until === undefined) return false;
-  if (until === null) return true;
-
-  if (Date.now() < until) return true;
-
-  // expired
-  blockedUsers.delete(userId);
-  return false;
-}
-
-function formatRemaining(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 /* ─────────────────────  UI  ───────────────────── */
@@ -104,12 +80,6 @@ bot.use((ctx, next) => {
 bot.command("start", async (ctx) => {
   if (ctx.chat?.type !== "private") return; // ignore /start outside private chats
 
-  // blocked users should not use the bot
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
-    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
-    return;
-  }
-
   await ctx.reply(
     `با عرض سلام مجدد،
 
@@ -126,85 +96,6 @@ bot.command("start", async (ctx) => {
 ------------------------------------------------------------------ */
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
-
-  // ---------- Admin commands ----------
-  const txt = ctx.message.text?.trim();
-
-  // /blockList can be used without reply
-  if (txt === "/blockList") {
-    if (blockedUsers.size === 0) {
-      await ctx.reply("لیست مسدود شده‌ها خالی است ✅", {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-
-    const lines: string[] = [];
-    for (const [uid, until] of blockedUsers.entries()) {
-      if (until === null) {
-        lines.push(`• ${uid} — دائمی`);
-      } else {
-        const remaining = until - Date.now();
-        if (remaining > 0) {
-          lines.push(`• ${uid} — باقی‌مانده ${formatRemaining(remaining)}`);
-        } else {
-          // expired, cleanup
-          blockedUsers.delete(uid);
-        }
-      }
-    }
-
-    await ctx.reply(`لیست مسدود شده‌ها:\n${lines.join("\n")}`, {
-      reply_to_message_id: ctx.message.message_id,
-    });
-    return;
-  }
-
-  // Commands that must be used by replying to a tracked bot message
-  if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
-    if (!replied) {
-      await ctx.reply("❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.", {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-
-    const uid = messageMap.get(replied.message_id);
-    if (!uid) {
-      await ctx.reply("❌ این پیام به کاربری متصل نیست (روی پیامِ ارسال‌شده توسط بات Reply کنید).", {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-
-    if (txt === "/block") {
-      blockedUsers.set(uid, null);
-      userStates.delete(uid);
-      await ctx.reply(`🚫 کاربر ${uid} مسدود شد (دائمی).`, {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-
-    if (txt === "/ban1h") {
-      blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
-      userStates.delete(uid);
-      await ctx.reply(`⏳ کاربر ${uid} به مدت ۱ ساعت مسدود شد.`, {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-
-    if (txt === "/unblock") {
-      blockedUsers.delete(uid);
-      await ctx.reply(`✅ کاربر ${uid} از حالت مسدود خارج شد.`, {
-        reply_to_message_id: ctx.message.message_id,
-      });
-      return;
-    }
-  }
-
-  // ---------- Normal admin reply-to-user flow ----------
   if (!replied) return; // ignore normal chatter
 
   const uid = messageMap.get(replied.message_id);
@@ -226,12 +117,6 @@ adminGroup.on("message", () => {});
 /* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
 // Menu navigation & states
 privateChat.on("message:text", async (ctx) => {
-  // blocked users should not use the bot
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
-    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
-    return;
-  }
-
   const text = ctx.message.text;
   const state = userStates.get(ctx.from.id);
 
@@ -279,6 +164,7 @@ privateChat.on("message:text", async (ctx) => {
 
   // 1) Expecting a normal text message (with identity)
   if (state === "awaiting_text") {
+    // safety: in this handler we're already in message:text
     try {
       const displayName = ctx.from.first_name ?? "کاربر";
       const username = ctx.from.username
@@ -297,6 +183,7 @@ privateChat.on("message:text", async (ctx) => {
       await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
         reply_markup: mainKeyboard,
       });
+      // keep state so they can retry
     }
     return;
   }
@@ -319,6 +206,7 @@ ${ctx.message.text}`,
       await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
         reply_markup: mainKeyboard,
       });
+      // keep state
     }
     return;
   }
@@ -333,12 +221,6 @@ ${ctx.message.text}`,
 
 // Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
-  // blocked users should not use the bot
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
-    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
-    return;
-  }
-
   const state = userStates.get(ctx.from.id);
 
   // If no state set yet, only nudge once for any non-menu input
@@ -351,7 +233,6 @@ privateChat.on("message", async (ctx, next) => {
     );
     return;
   }
-
   // Handle VOICE messages for known/anonymous flows
   const voice = ctx.message?.voice;
 
@@ -385,6 +266,7 @@ privateChat.on("message", async (ctx, next) => {
       await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
         reply_markup: mainKeyboard,
       });
+      // keep state so they can retry
     }
     return;
   }
@@ -414,10 +296,10 @@ privateChat.on("message", async (ctx, next) => {
       await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
         reply_markup: mainKeyboard,
       });
+      // keep state
     }
     return;
   }
-
   // Handle the PDF upload state
   if (state === "awaiting_file") {
     const doc = ctx.message?.document;
@@ -432,21 +314,24 @@ privateChat.on("message", async (ctx, next) => {
         await ctx.reply("فایل شما ارسال شد. متشکرم!", {
           reply_markup: mainKeyboard,
         });
-        userStates.delete(ctx.from.id);
+        userStates.delete(ctx.from.id); // clear after success
       } catch {
         await ctx.reply("❌ خطا در ارسال فایل. دوباره تلاش کنید.", {
           reply_markup: mainKeyboard,
         });
+        // keep state to retry
       }
       return;
     }
 
+    // Not a PDF → ask again, keep state
     await ctx.reply("تنها فایل PDF مجاز است. لطفاً مجدداً امتحان کنید.", {
       reply_markup: mainKeyboard,
     });
     return;
   }
 
+  // Let other privateChat handlers continue if needed
   return next();
 });
 
