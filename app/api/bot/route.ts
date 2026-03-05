@@ -163,34 +163,43 @@ adminGroup.on("message:text", async (ctx) => {
   // Commands that must be used by replying to a tracked bot message
   if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
     if (!replied) {
-      await ctx.reply("❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.", {
+      await ctx.reply(
+        "❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.",
+        {
+          reply_to_message_id: ctx.message.message_id,
+        },
+      );
+      return;
+    }
+
+    let uid = messageMap.get(replied.message_id);
+
+    // fallback: extract Telegram ID from message text
+    if (!uid) {
+      const txt = replied.text || replied.caption;
+      const match = txt?.match(/Telegram ID:\s*(\d+)/);
+
+      if (match) {
+        uid = Number(match[1]);
+      }
+    }
+
+    if (!uid) {
+      await ctx.reply("❌ کاربر پیدا نشد.", {
         reply_to_message_id: ctx.message.message_id,
       });
       return;
     }
 
-let uid = messageMap.get(replied.message_id);
-
-// fallback: extract Telegram ID from message text
-if (!uid) {
-  const txt = replied.text || replied.caption;
-  const match = txt?.match(/Telegram ID:\s*(\d+)/);
-
-  if (match) {
-    uid = Number(match[1]);
-  }
-}
-
-if (!uid) {
-  await ctx.reply("❌ کاربر پیدا نشد.", {
-    reply_to_message_id: ctx.message.message_id,
-  });
-  return;
-}
-
     if (txt === "/block") {
       blockedUsers.set(uid, null);
       userStates.delete(uid);
+      try {
+        await ctx.api.sendMessage(
+          uid,
+          "❌امکان ارسال پیام برای شما محدود گردیده است❌",
+        );
+      } catch {}
       await ctx.reply(`🚫 کاربر ${uid} مسدود شد (دائمی).`, {
         reply_to_message_id: ctx.message.message_id,
       });
@@ -200,6 +209,12 @@ if (!uid) {
     if (txt === "/ban1h") {
       blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
       userStates.delete(uid);
+      try {
+        await ctx.api.sendMessage(
+          uid,
+          "❌امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است❌",
+        );
+      } catch {}
       await ctx.reply(`⏳ کاربر ${uid} به مدت ۱ ساعت مسدود شد.`, {
         reply_to_message_id: ctx.message.message_id,
       });
@@ -208,6 +223,12 @@ if (!uid) {
 
     if (txt === "/unblock") {
       blockedUsers.delete(uid);
+      try {
+        await ctx.api.sendMessage(
+          uid,
+          "✅محدودیت امکان ارسال پیام برای شما برطرف گردیده است✅",
+        );
+      } catch {}
       await ctx.reply(`✅ کاربر ${uid} از حالت مسدود خارج شد.`, {
         reply_to_message_id: ctx.message.message_id,
       });
