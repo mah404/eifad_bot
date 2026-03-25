@@ -348,11 +348,135 @@ adminGroup.on("message:text", async (ctx) => {
 adminGroup.on("message", () => {});
 
 /* ─────────────────────  PRIVATE CHAT: TEXT  ───────────────────── */
+privateChat.on("message:text", async (ctx) => {
+  if (!ctx.from) return;
+
+  if (isBlocked(ctx.from.id)) {
+    const lang = getUserLang(ctx.from.id);
+    await ctx.reply(t(lang).blocked);
+    return;
+  }
+
+  const text = ctx.message.text.trim();
+
+  // language selection
+  if (text === "English" || text === "فارسی") {
+    const lang: Lang = text === "English" ? "en" : "fa";
+
+    userLanguages.set(ctx.from.id, lang);
+    userStates.delete(ctx.from.id);
+
+    await ctx.reply(`${t(lang).languageChanged}\n\n${t(lang).welcome}`, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+
+  const lang = getUserLang(ctx.from.id);
+  const tt = t(lang);
+  const state = userStates.get(ctx.from.id);
+
+  // menu clicks
+  if (text === tt.menuPdf) {
+    userStates.set(ctx.from.id, "awaiting_file");
+    await ctx.reply(tt.askPdf, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+
+  if (text === tt.menuKnown) {
+    userStates.set(ctx.from.id, "awaiting_text");
+    await ctx.reply(tt.askKnown, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+
+  if (text === tt.menuAnonymous) {
+    userStates.set(ctx.from.id, "awaiting_anonymous_text");
+    await ctx.reply(tt.askAnonymous, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+
+  // no state yet
+  if (!state) {
+    await ctx.reply(tt.chooseMenuFirst, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+
+  // identified text
+  if (state === "awaiting_text") {
+    try {
+      const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
+      const username = ctx.from.username
+        ? `@${ctx.from.username}`
+        : lang === "fa"
+          ? "بدون‌نام کاربری"
+          : "no username";
+
+      const sent = await ctx.api.sendMessage(
+        TARGET_CHANNEL,
+        `${tt.forwardedKnownHeader(displayName, username, ctx.from.id)}\n${ctx.message.text}`,
+      );
+
+      messageMap.set(sent.message_id, ctx.from.id);
+
+      await ctx.reply(tt.sentKnown, {
+        reply_markup: getMainKeyboard(lang),
+      });
+
+      userStates.delete(ctx.from.id);
+    } catch (error) {
+      console.error("Known text error:", error);
+      await ctx.reply(tt.sendError, {
+        reply_markup: getMainKeyboard(lang),
+      });
+    }
+    return;
+  }
+
+  // anonymous text
+  if (state === "awaiting_anonymous_text") {
+    try {
+      const sent = await ctx.api.sendMessage(
+        TARGET_CHANNEL,
+        `${tt.forwardedAnonymousHeader(ctx.from.id)}\n${ctx.message.text}`,
+      );
+
+      messageMap.set(sent.message_id, ctx.from.id);
+
+      await ctx.reply(tt.sentAnonymous, {
+        reply_markup: getMainKeyboard(lang),
+      });
+
+      userStates.delete(ctx.from.id);
+    } catch (error) {
+      console.error("Anonymous text error:", error);
+      await ctx.reply(tt.sendAnonymousError, {
+        reply_markup: getMainKeyboard(lang),
+      });
+    }
+    return;
+  }
+
+  // typed text while waiting for pdf
+  if (state === "awaiting_file") {
+    await ctx.reply(tt.onlyPdf, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
+});
 /* ─────────────────────  PRIVATE CHAT: NON-TEXT  ───────────────────── */
 privateChat.on("message", async (ctx, next) => {
   if (!ctx.from || !ctx.message) return next();
 
-  // let text messages be handled only by message:text
+  // text messages فقط در message:text پردازش شوند
   if ("text" in ctx.message && typeof ctx.message.text === "string") {
     return next();
   }
@@ -405,7 +529,8 @@ privateChat.on("message", async (ctx, next) => {
       });
 
       userStates.delete(ctx.from.id);
-    } catch {
+    } catch (error) {
+      console.error("Known voice error:", error);
       await ctx.reply(tt.sendError, {
         reply_markup: getMainKeyboard(lang),
       });
@@ -435,7 +560,8 @@ privateChat.on("message", async (ctx, next) => {
       });
 
       userStates.delete(ctx.from.id);
-    } catch {
+    } catch (error) {
+      console.error("Anonymous voice error:", error);
       await ctx.reply(tt.sendAnonymousError, {
         reply_markup: getMainKeyboard(lang),
       });
@@ -461,7 +587,8 @@ privateChat.on("message", async (ctx, next) => {
         });
 
         userStates.delete(ctx.from.id);
-      } catch {
+      } catch (error) {
+        console.error("PDF error:", error);
         await ctx.reply(tt.fileError, {
           reply_markup: getMainKeyboard(lang),
         });
@@ -477,136 +604,6 @@ privateChat.on("message", async (ctx, next) => {
 
   return next();
 });
-/* ─────────────────────  PRIVATE CHAT: NON-TEXT  ───────────────────── */
-privateChat.on("message", async (ctx, next) => {
-  if (!ctx.from) return next();
-
-  // let text messages be handled only by message:text
-  if ("text" in ctx.message && typeof ctx.message.text === "string") {
-    return next();
-  }
-
-  if (isBlocked(ctx.from.id)) {
-    const lang = getUserLang(ctx.from.id);
-    await ctx.reply(t(lang).blocked);
-    return;
-  }
-
-  const lang = getUserLang(ctx.from.id);
-  const tt = t(lang);
-  const state = userStates.get(ctx.from.id);
-
-  if (!state && ctx.chat?.type === "private") {
-    await ctx.reply(tt.chooseMenuFirst, {
-      reply_markup: getMainKeyboard(lang),
-    });
-    return;
-  }
-
-  const voice = "voice" in ctx.message ? ctx.message.voice : undefined;
-
-  if (voice && state === "awaiting_text") {
-    try {
-      const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
-      const username = ctx.from.username
-        ? `@${ctx.from.username}`
-        : lang === "fa"
-          ? "بدون‌نام کاربری"
-          : "no username";
-
-      const header = await ctx.api.sendMessage(
-        TARGET_CHANNEL,
-        tt.forwardedKnownHeader(displayName, username, ctx.from.id),
-      );
-
-      const copied = await ctx.api.copyMessage(
-        TARGET_CHANNEL,
-        ctx.chat!.id,
-        ctx.message.message_id,
-        { reply_to_message_id: header.message_id },
-      );
-
-      messageMap.set(header.message_id, ctx.from.id);
-      messageMap.set(copied.message_id, ctx.from.id);
-
-      await ctx.reply(tt.sentKnown, {
-        reply_markup: getMainKeyboard(lang),
-      });
-
-      userStates.delete(ctx.from.id);
-    } catch {
-      await ctx.reply(tt.sendError, {
-        reply_markup: getMainKeyboard(lang),
-      });
-    }
-    return;
-  }
-
-  if (voice && state === "awaiting_anonymous_text") {
-    try {
-      const header = await ctx.api.sendMessage(
-        TARGET_CHANNEL,
-        tt.forwardedAnonymousHeader(ctx.from.id),
-      );
-
-      const copied = await ctx.api.copyMessage(
-        TARGET_CHANNEL,
-        ctx.chat!.id,
-        ctx.message.message_id,
-        { reply_to_message_id: header.message_id },
-      );
-
-      messageMap.set(header.message_id, ctx.from.id);
-      messageMap.set(copied.message_id, ctx.from.id);
-
-      await ctx.reply(tt.sentAnonymous, {
-        reply_markup: getMainKeyboard(lang),
-      });
-
-      userStates.delete(ctx.from.id);
-    } catch {
-      await ctx.reply(tt.sendAnonymousError, {
-        reply_markup: getMainKeyboard(lang),
-      });
-    }
-    return;
-  }
-
-  if (state === "awaiting_file") {
-    const doc = "document" in ctx.message ? ctx.message.document : undefined;
-
-    if (doc?.mime_type === "application/pdf") {
-      try {
-        const sent = await ctx.api.forwardMessage(
-          TARGET_CHANNEL,
-          ctx.chat!.id,
-          ctx.message.message_id,
-        );
-
-        messageMap.set(sent.message_id, ctx.from.id);
-
-        await ctx.reply(tt.sentFile, {
-          reply_markup: getMainKeyboard(lang),
-        });
-
-        userStates.delete(ctx.from.id);
-      } catch {
-        await ctx.reply(tt.fileError, {
-          reply_markup: getMainKeyboard(lang),
-        });
-      }
-      return;
-    }
-
-    await ctx.reply(tt.onlyPdfRetry, {
-      reply_markup: getMainKeyboard(lang),
-    });
-    return;
-  }
-
-  return next();
-});
-
 /* ─────────────────────  WEBHOOK ENTRYPOINT  ───────────────────── */
 export async function POST(req: NextRequest) {
   return webhookCallback(bot, "std/http")(req);
