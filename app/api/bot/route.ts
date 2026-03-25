@@ -201,8 +201,9 @@ bot.use((ctx, next) => {
 /* ─────────────────────  /start (private only)  ───────────────────── */
 bot.command("start", async (ctx) => {
   if (ctx.chat?.type !== "private") return;
+  if (!ctx.from) return;
 
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+  if (isBlocked(ctx.from.id)) {
     const lang = getUserLang(ctx.from.id);
     await ctx.reply(t(lang).blocked);
     return;
@@ -218,8 +219,9 @@ bot.command("start", async (ctx) => {
 /* Optional: allow switching language any time */
 bot.command("language", async (ctx) => {
   if (ctx.chat?.type !== "private") return;
+  if (!ctx.from) return;
 
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+  if (isBlocked(ctx.from.id)) {
     const lang = getUserLang(ctx.from.id);
     await ctx.reply(t(lang).blocked);
     return;
