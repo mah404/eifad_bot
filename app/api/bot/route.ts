@@ -14,10 +14,9 @@ if (!token) {
 
 const bot = new Bot(token);
 
-// ⚠️ Admin group/supergroup chat id (string form, keep the minus):
 const TARGET_CHANNEL = process.env.SUPPORT_GROUP_ID;
 if (!TARGET_CHANNEL) {
-  throw new Error("TARGET_CHANNEL environment variable not found.");
+  throw new Error("SUPPORT_GROUP_ID environment variable not found.");
 }
 
 /* ─────────────────────  TYPES & STATE  ───────────────────── */
@@ -26,8 +25,8 @@ type Lang = "fa" | "en";
 
 const userStates = new Map<number, UserState>();
 const messageMap = new Map<number, number>(); // groupMessageId -> userId
-const userLangs = new Map<number, Lang>(); // userId -> selected language
-const anonCodes = new Map<number, string>(); // stable anon code per user
+const userLangs = new Map<number, Lang>();
+const anonCodes = new Map<number, string>();
 
 function getAnonCode(userId: number) {
   let code = anonCodes.get(userId);
@@ -43,9 +42,6 @@ const TEXTS = {
   fa: {
     chooseLanguage: "لطفاً زبان مورد نظر خود را انتخاب نمایید.",
     languagePlaceholder: "Choose language / انتخاب زبان",
-    persian: "فارسی",
-    english: "English",
-
     startMessage: `با عرض سلام مجدد،
 
 جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید.
@@ -65,15 +61,15 @@ const TEXTS = {
     chooseMenuFirst:
       "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
 
-    knownSent: "پیام شما ارسال گردید. ✅",
-    anonymousSent: "پیام ناشناس شما ارسال گردید. ✅",
+    knownSent: "پیام شما ارسال گردید.✅",
+    anonymousSent: "پیام ناشناس شما ارسال گردید.✅",
     pdfSent: "فایل شما ارسال شد. متشکرم!",
 
     sendError: "❌ خطا در ارسال پیام. دوباره تلاش کنید.",
     anonymousSendError: "❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.",
     fileSendError: "❌ خطا در ارسال فایل. دوباره تلاش کنید.",
 
-    pdfOnly: "تنها فایل PDF مجاز است. لطفاً فایل PDF خود را ارسال کنید.",
+    pdfOnly: "تنها فایل PDF مجاز است. لطفاً فایل خود را ارسال کنید.",
     pdfOnlyRetry: "تنها فایل PDF مجاز است. لطفاً مجدداً امتحان کنید.",
 
     adminReplyPrefix: "پاسخ ادمین:\n",
@@ -89,10 +85,10 @@ const TEXTS = {
     permanent: "دائمی",
     remaining: "باقی‌مانده",
 
-    blockedPermanentUser: "❌ امکان ارسال پیام برای شما محدود گردیده است ❌",
+    blockedPermanentUser: "❌امکان ارسال پیام برای شما محدود گردیده است❌",
     blocked1hUser:
-      "❌ امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است ❌",
-    unblockedUser: "✅ محدودیت ارسال پیام برای شما برطرف گردیده است ✅",
+      "❌امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است❌",
+    unblockedUser: "✅محدودیت امکان ارسال پیام برای شما برطرف گردیده است✅",
 
     blockedPermanentAdmin: "🚫 کاربر %UID% مسدود شد (دائمی).",
     blocked1hAdmin: "⏳ کاربر %UID% به مدت ۱ ساعت مسدود شد.",
@@ -108,9 +104,6 @@ const TEXTS = {
   en: {
     chooseLanguage: "Please choose your language.",
     languagePlaceholder: "Choose language / انتخاب زبان",
-    persian: "فارسی",
-    english: "English",
-
     startMessage: `Hello,
 
 Please choose one of the options below to contact us.
@@ -155,8 +148,7 @@ Thank you`,
     permanent: "Permanent",
     remaining: "Remaining",
 
-    blockedPermanentUser:
-      "❌ Your ability to send messages has been blocked. ❌",
+    blockedPermanentUser: "❌ Your ability to send messages has been blocked. ❌",
     blocked1hUser:
       "❌ Your ability to send messages has been blocked for 1 hour. ❌",
     unblockedUser: "✅ Your messaging restriction has been removed. ✅",
@@ -214,7 +206,6 @@ function getMenuTexts(lang: Lang): Set<string> {
 }
 
 /* ─────────────────────  BLOCKING  ───────────────────── */
-// blockedUsers: userId -> untilEpochMs (null = permanent)
 const blockedUsers = new Map<number, number | null>();
 
 function isBlocked(userId: number) {
@@ -253,25 +244,7 @@ bot.use((ctx, next) => {
     return privateChat.middleware()(ctx, next);
   }
 
-  return;
-});
-
-/* ─────────────────────  /start (private only)  ───────────────────── */
-bot.command("start", async (ctx) => {
-  if (ctx.chat?.type !== "private") return;
-  if (!ctx.from) return;
-
-  if (isBlocked(ctx.from.id)) {
-    await ctx.reply(t(ctx.from.id, "blockedAccess"));
-    return;
-  }
-
-  userStates.delete(ctx.from.id);
-  userLangs.delete(ctx.from.id);
-
-  await ctx.reply(TEXTS.fa.chooseLanguage, {
-    reply_markup: buildLanguageKeyboard(),
-  });
+  return next();
 });
 
 /* ─────────────────────  ADMIN GROUP LOGIC  ───────────────────── */
@@ -279,15 +252,7 @@ adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
 
-  // /blockList
   if (txt === "/blockList") {
-    // cleanup expired temporary bans
-    for (const [uid, until] of blockedUsers.entries()) {
-      if (until !== null && until <= Date.now()) {
-        blockedUsers.delete(uid);
-      }
-    }
-
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
         reply_to_message_id: ctx.message.message_id,
@@ -302,9 +267,14 @@ adminGroup.on("message:text", async (ctx) => {
       if (until === null) {
         lines.push(`• ${uid} — ${TEXTS[lang].permanent}`);
       } else {
-        lines.push(
-          `• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(until - Date.now())}`,
-        );
+        const remaining = until - Date.now();
+        if (remaining > 0) {
+          lines.push(
+            `• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(remaining)}`,
+          );
+        } else {
+          blockedUsers.delete(uid);
+        }
       }
     }
 
@@ -314,7 +284,6 @@ adminGroup.on("message:text", async (ctx) => {
     return;
   }
 
-  // /block /unblock /ban1h
   if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
     if (!replied) {
       await ctx.reply(TEXTS.fa.useReplyForCommand, {
@@ -328,7 +297,9 @@ adminGroup.on("message:text", async (ctx) => {
     if (!uid) {
       const replyText = replied.text || replied.caption;
       const match = replyText?.match(/Telegram ID:\s*(\d+)/);
-      if (match) uid = Number(match[1]);
+      if (match) {
+        uid = Number(match[1]);
+      }
     }
 
     if (!uid) {
@@ -343,11 +314,9 @@ adminGroup.on("message:text", async (ctx) => {
     if (txt === "/block") {
       blockedUsers.set(uid, null);
       userStates.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].blockedPermanentUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].blockedPermanentAdmin.replace("%UID%", String(uid)),
         { reply_to_message_id: ctx.message.message_id },
@@ -358,11 +327,9 @@ adminGroup.on("message:text", async (ctx) => {
     if (txt === "/ban1h") {
       blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
       userStates.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].blocked1hUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].blocked1hAdmin.replace("%UID%", String(uid)),
         { reply_to_message_id: ctx.message.message_id },
@@ -372,11 +339,9 @@ adminGroup.on("message:text", async (ctx) => {
 
     if (txt === "/unblock") {
       blockedUsers.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].unblockedUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].unblockedAdmin.replace("%UID%", String(uid)),
         { reply_to_message_id: ctx.message.message_id },
@@ -385,7 +350,6 @@ adminGroup.on("message:text", async (ctx) => {
     }
   }
 
-  // normal admin reply flow
   if (!replied) return;
 
   const uid = messageMap.get(replied.message_id);
@@ -408,26 +372,32 @@ adminGroup.on("message:text", async (ctx) => {
   }
 });
 
-// Ignore other admin-group message types
 adminGroup.on("message", () => {});
 
-/* ─────────────────────  PRIVATE TEXT LOGIC  ───────────────────── */
+/* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
 privateChat.on("message:text", async (ctx) => {
   if (!ctx.from) return;
 
   const text = ctx.message.text.trim();
-
-  // Prevent /start and other commands from being handled here
-  if (text.startsWith("/")) return;
 
   if (isBlocked(ctx.from.id)) {
     await ctx.reply(t(ctx.from.id, "blockedAccess"));
     return;
   }
 
+  // Handle /start HERE to avoid middleware-order problems
+  if (text === "/start" || text.startsWith("/start ")) {
+    userStates.delete(ctx.from.id);
+    userLangs.delete(ctx.from.id);
+
+    await ctx.reply(TEXTS.fa.chooseLanguage, {
+      reply_markup: buildLanguageKeyboard(),
+    });
+    return;
+  }
+
   const state = userStates.get(ctx.from.id);
 
-  // Language selection
   if (text === "فارسی") {
     userLangs.set(ctx.from.id, "fa");
     userStates.delete(ctx.from.id);
@@ -448,7 +418,6 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
-  // If user hasn't selected language yet, ask again
   if (!userLangs.has(ctx.from.id)) {
     await ctx.reply(TEXTS.fa.chooseLanguage, {
       reply_markup: buildLanguageKeyboard(),
@@ -459,7 +428,6 @@ privateChat.on("message:text", async (ctx) => {
   const currentLang = getUserLang(ctx.from.id);
   const MENU_TEXTS = getMenuTexts(currentLang);
 
-  // Menu actions
   if (MENU_TEXTS.has(text)) {
     if (text === TEXTS[currentLang].pdfBtn) {
       userStates.set(ctx.from.id, "awaiting_file");
@@ -486,7 +454,6 @@ privateChat.on("message:text", async (ctx) => {
     }
   }
 
-  // No menu chosen yet
   if (!state) {
     await ctx.reply(TEXTS[currentLang].chooseMenuFirst, {
       reply_markup: buildMainKeyboard(currentLang),
@@ -494,7 +461,6 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
-  // Identified text
   if (state === "awaiting_text") {
     try {
       const displayName =
@@ -522,7 +488,6 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
-  // Anonymous text
   if (state === "awaiting_anonymous_text") {
     try {
       const anonCode = getAnonCode(ctx.from.id);
@@ -546,11 +511,11 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
-  // Text while waiting for PDF
   if (state === "awaiting_file") {
     await ctx.reply(TEXTS[currentLang].pdfOnly, {
       reply_markup: buildMainKeyboard(currentLang),
     });
+    return;
   }
 });
 
@@ -558,15 +523,16 @@ privateChat.on("message:text", async (ctx) => {
 privateChat.on("message", async (ctx, next) => {
   if (!ctx.from) return;
 
+  if ("text" in ctx.message && typeof ctx.message.text === "string") {
+    return next();
+  }
+
   if (isBlocked(ctx.from.id)) {
     await ctx.reply(t(ctx.from.id, "blockedAccess"));
     return;
   }
 
-  // Let text messages be handled by message:text
-  if ("text" in ctx.message && typeof ctx.message.text === "string") {
-    return next();
-  }
+  const state = userStates.get(ctx.from.id);
 
   if (!userLangs.has(ctx.from.id)) {
     await ctx.reply(TEXTS.fa.chooseLanguage, {
@@ -576,7 +542,6 @@ privateChat.on("message", async (ctx, next) => {
   }
 
   const lang = getUserLang(ctx.from.id);
-  const state = userStates.get(ctx.from.id);
 
   if (!state && ctx.chat.type === "private") {
     await ctx.reply(TEXTS[lang].chooseMenuFirst, {
@@ -587,7 +552,6 @@ privateChat.on("message", async (ctx, next) => {
 
   const voice = ctx.message.voice;
 
-  // Voice + identified
   if (voice && state === "awaiting_text") {
     try {
       const displayName = ctx.from.first_name ?? TEXTS[lang].userFallbackName;
@@ -622,7 +586,6 @@ privateChat.on("message", async (ctx, next) => {
     return;
   }
 
-  // Voice + anonymous
   if (voice && state === "awaiting_anonymous_text") {
     try {
       const anonCode = getAnonCode(ctx.from.id);
@@ -654,7 +617,6 @@ privateChat.on("message", async (ctx, next) => {
     return;
   }
 
-  // File upload state
   if (state === "awaiting_file") {
     const doc = ctx.message.document;
 
@@ -681,14 +643,6 @@ privateChat.on("message", async (ctx, next) => {
     }
 
     await ctx.reply(TEXTS[lang].pdfOnlyRetry, {
-      reply_markup: buildMainKeyboard(lang),
-    });
-    return;
-  }
-
-  // Wrong media when waiting for text/anonymous
-  if (state === "awaiting_text" || state === "awaiting_anonymous_text") {
-    await ctx.reply(TEXTS[lang].chooseMenuFirst, {
       reply_markup: buildMainKeyboard(lang),
     });
     return;
