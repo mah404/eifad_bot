@@ -8,25 +8,27 @@ import { type NextRequest } from "next/server";
 
 /* ─────────────────────  ENV & BOT  ───────────────────── */
 const token = process.env.TELEGRAM_BOT_TOKEN;
-if (!token)
+if (!token) {
   throw new Error("TELEGRAM_BOT_TOKEN environment variable not found.");
+}
 
 const bot = new Bot(token);
 
-// ⚠️ Admin group/supergroup chat id (string form, keep the minus):
 const TARGET_CHANNEL = process.env.SUPPORT_GROUP_ID;
-if (!TARGET_CHANNEL)
-  throw new Error("TARGET_CHANNEL environment variable not found.");
+if (!TARGET_CHANNEL) {
+  throw new Error("SUPPORT_GROUP_ID environment variable not found.");
+}
 
-/* ─────────────────────  STATE  ───────────────────── */
+/* ─────────────────────  TYPES & STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 type Lang = "fa" | "en";
 
-const userStates = new Map<number, UserState>(); // per-user flow state (only for private chats)
-const messageMap = new Map<number, number>(); // groupMessageId -> userId (for admin replies)
-const userLanguages = new Map<number, Lang>(); // userId -> selected language
+const userStates = new Map<number, UserState>();
+const userLanguages = new Map<number, Lang>();
+const messageMap = new Map<number, number>();
+const anonCodes = new Map<number, string>();
 
-const anonCodes = new Map<number, string>(); // userId -> anonymous code (stable)
+const blockedUsers = new Map<number, number | null>();
 
 function getAnonCode(userId: number) {
   let code = anonCodes.get(userId);
@@ -41,10 +43,6 @@ function getUserLang(userId: number): Lang {
   return userLanguages.get(userId) || "fa";
 }
 
-/* ─────────────────────  BLOCKING  ───────────────────── */
-// blockedUsers: userId -> untilEpochMs (null = permanent)
-const blockedUsers = new Map<number, number | null>();
-
 function isBlocked(userId: number) {
   const until = blockedUsers.get(userId);
   if (until === undefined) return false;
@@ -52,7 +50,6 @@ function isBlocked(userId: number) {
 
   if (Date.now() < until) return true;
 
-  // expired
   blockedUsers.delete(userId);
   return false;
 }
@@ -77,23 +74,23 @@ const TEXTS = {
 با تشکر`,
     blocked: "❌ دسترسی شما به این بات مسدود شده است.",
     chooseMenuFirst:
-      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
+      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه‌های زیر را انتخاب نمایید ❌",
     askPdf: "لطفاً فایل PDF خود را ارسال کنید.",
-    askKnown: "پیام شناس خود را وارد نمایید.",
+    askKnown: "پیام شناس‌دار خود را وارد نمایید.",
     askAnonymous: "پیام ناشناس خود را وارد نمایید.",
     onlyPdf: "تنها فایل PDF مجاز است. لطفاً فایل خود را ارسال کنید.",
     onlyPdfRetry: "تنها فایل PDF مجاز است. لطفاً مجدداً امتحان کنید.",
-    sentKnown: "پیام شما ارسال گردید.✅",
-    sentAnonymous: "پیام ناشناس شما ارسال گردید.✅",
-    sentFile: "فایل شما ارسال شد. متشکرم!",
+    sentKnown: "✅ پیام شما ارسال گردید.",
+    sentAnonymous: "✅ پیام ناشناس شما ارسال گردید.",
+    sentFile: "✅ فایل شما ارسال شد. متشکرم!",
     sendError: "❌ خطا در ارسال پیام. دوباره تلاش کنید.",
     sendAnonymousError: "❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.",
     fileError: "❌ خطا در ارسال فایل. دوباره تلاش کنید.",
     adminReplyPrefix: "پاسخ ادمین:",
     languageChanged: "✅ زبان فارسی انتخاب شد.",
-    placeholder: "لطفاً یکی از گزینه های زیر را انتخاب نمایید.",
-    menuKnown: "💬 ارسال پیام به صورت شناس",
-    menuAnonymous: "🔒 ارسال پیام به صورت ناشناس",
+    placeholder: "لطفاً یکی از گزینه‌های زیر را انتخاب نمایید.",
+    menuKnown: "💬 ارسال پیام به‌صورت شناس‌دار",
+    menuAnonymous: "🔒 ارسال پیام به‌صورت ناشناس",
     menuPdf: "📄 ارسال فایل PDF",
     langFa: "فارسی",
     langEn: "English",
@@ -121,8 +118,7 @@ Thank you`,
     sentAnonymous: "✅ Your anonymous message has been sent.",
     sentFile: "✅ Your file has been sent. Thank you!",
     sendError: "❌ Error sending message. Please try again.",
-    sendAnonymousError:
-      "❌ Error sending anonymous message. Please try again.",
+    sendAnonymousError: "❌ Error sending anonymous message. Please try again.",
     fileError: "❌ Error sending file. Please try again.",
     adminReplyPrefix: "Admin reply:",
     languageChanged: "✅ English language selected.",
@@ -149,8 +145,7 @@ function getLanguageKeyboard() {
     .text(TEXTS.fa.langFa)
     .text(TEXTS.fa.langEn)
     .row()
-    .resized()
-    .persistent(true);
+    .resized();
 }
 
 function getMainKeyboard(lang: Lang) {
@@ -163,13 +158,12 @@ function getMainKeyboard(lang: Lang) {
     .text(tt.menuPdf)
     .row()
     .resized()
-    .persistent(true)
     .placeholder(tt.placeholder);
 }
 
-function getMenuTexts(lang: Lang) {
+function getMenuTexts(lang: Lang): Set<string> {
   const tt = t(lang);
-  return new Set([tt.menuKnown, tt.menuAnonymous, tt.menuPdf]);
+  return new Set<string>([tt.menuKnown, tt.menuAnonymous, tt.menuPdf]);
 }
 
 function isLanguageSelection(text: string) {
@@ -177,28 +171,25 @@ function isLanguageSelection(text: string) {
 }
 
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
-const adminGroup = new Composer(); // messages from the admin group/supergroup
-const privateChat = new Composer(); // messages from private (user) chats
+const adminGroup = new Composer();
+const privateChat = new Composer();
 
 bot.use((ctx, next) => {
   const chatId = ctx.chat?.id?.toString();
   if (!chatId) return next();
 
   if (chatId === TARGET_CHANNEL) {
-    // Admin group
     return adminGroup.middleware()(ctx, next);
   }
 
   if (ctx.chat?.type === "private") {
-    // Private DMs with users
     return privateChat.middleware()(ctx, next);
   }
 
-  // Any other chat types (other groups, channels) → ignore
   return;
 });
 
-/* ─────────────────────  /start (private only)  ───────────────────── */
+/* ─────────────────────  /start  ───────────────────── */
 bot.command("start", async (ctx) => {
   if (ctx.chat?.type !== "private") return;
   if (!ctx.from) return;
@@ -216,7 +207,6 @@ bot.command("start", async (ctx) => {
   });
 });
 
-/* Optional: allow switching language any time */
 bot.command("language", async (ctx) => {
   if (ctx.chat?.type !== "private") return;
   if (!ctx.from) return;
@@ -226,6 +216,8 @@ bot.command("language", async (ctx) => {
     await ctx.reply(t(lang).blocked);
     return;
   }
+
+  userStates.delete(ctx.from.id);
 
   await ctx.reply(TEXTS.fa.chooseLanguage, {
     reply_markup: getLanguageKeyboard(),
@@ -237,10 +229,9 @@ adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
 
-  // /blockList can be used without reply
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
-      await ctx.reply("لیست مسدود شده‌ها خالی است ✅", {
+      await ctx.reply("لیست مسدودشده‌ها خالی است ✅", {
         reply_to_message_id: ctx.message.message_id,
       });
       return;
@@ -260,7 +251,7 @@ adminGroup.on("message:text", async (ctx) => {
       }
     }
 
-    await ctx.reply(`لیست مسدود شده‌ها:\n${lines.join("\n")}`, {
+    await ctx.reply(`لیست مسدودشده‌ها:\n${lines.join("\n")}`, {
       reply_to_message_id: ctx.message.message_id,
     });
     return;
@@ -268,12 +259,9 @@ adminGroup.on("message:text", async (ctx) => {
 
   if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
     if (!replied) {
-      await ctx.reply(
-        "❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.",
-        {
-          reply_to_message_id: ctx.message.message_id,
-        },
-      );
+      await ctx.reply("❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.", {
+        reply_to_message_id: ctx.message.message_id,
+      });
       return;
     }
 
@@ -313,7 +301,7 @@ adminGroup.on("message:text", async (ctx) => {
         await ctx.api.sendMessage(
           uid,
           lang === "fa"
-            ? "❌ امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است❌"
+            ? "❌ امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است ❌"
             : "❌ Your ability to send messages has been restricted for 1 hour. ❌",
         );
       } catch {}
@@ -357,12 +345,13 @@ adminGroup.on("message:text", async (ctx) => {
   }
 });
 
-// Ignore any other message types in admin group
 adminGroup.on("message", () => {});
 
-/* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
+/* ─────────────────────  PRIVATE CHAT: TEXT  ───────────────────── */
 privateChat.on("message:text", async (ctx) => {
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+  if (!ctx.from) return;
+
+  if (isBlocked(ctx.from.id)) {
     const lang = getUserLang(ctx.from.id);
     await ctx.reply(t(lang).blocked);
     return;
@@ -370,7 +359,7 @@ privateChat.on("message:text", async (ctx) => {
 
   const text = ctx.message.text.trim();
 
-  // Language selection
+  // language selection
   if (isLanguageSelection(text)) {
     const lang: Lang = text === TEXTS.fa.langEn ? "en" : "fa";
     userLanguages.set(ctx.from.id, lang);
@@ -387,26 +376,42 @@ privateChat.on("message:text", async (ctx) => {
   const menuTexts = getMenuTexts(lang);
   const state = userStates.get(ctx.from.id);
 
-  /* ────── Menu entries ────── */
-function getMenuTexts(lang: Lang) {
-  const tt = t(lang);
-  return new Set<string>([
-    tt.menuKnown,
-    tt.menuAnonymous,
-    tt.menuPdf,
-  ]);
-}
+  // menu entries
+  if (menuTexts.has(text)) {
+    if (text === tt.menuPdf) {
+      userStates.set(ctx.from.id, "awaiting_file");
+      await ctx.reply(tt.askPdf, {
+        reply_markup: getMainKeyboard(lang),
+      });
+      return;
+    }
 
-  /* ────── If no state chosen yet ────── */
-  if (!state) {
-    return ctx.reply(tt.chooseMenuFirst, {
-      reply_markup: getMainKeyboard(lang),
-    });
+    if (text === tt.menuKnown) {
+      userStates.set(ctx.from.id, "awaiting_text");
+      await ctx.reply(tt.askKnown, {
+        reply_markup: getMainKeyboard(lang),
+      });
+      return;
+    }
+
+    if (text === tt.menuAnonymous) {
+      userStates.set(ctx.from.id, "awaiting_anonymous_text");
+      await ctx.reply(tt.askAnonymous, {
+        reply_markup: getMainKeyboard(lang),
+      });
+      return;
+    }
   }
 
-  /* ────── State-based processing ────── */
+  // if no state yet
+  if (!state) {
+    await ctx.reply(tt.chooseMenuFirst, {
+      reply_markup: getMainKeyboard(lang),
+    });
+    return;
+  }
 
-  // 1) Known text message
+  // known text
   if (state === "awaiting_text") {
     try {
       const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
@@ -426,6 +431,7 @@ function getMenuTexts(lang: Lang) {
       await ctx.reply(tt.sentKnown, {
         reply_markup: getMainKeyboard(lang),
       });
+
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply(tt.sendError, {
@@ -435,7 +441,7 @@ function getMenuTexts(lang: Lang) {
     return;
   }
 
-  // 2) Anonymous text message
+  // anonymous text
   if (state === "awaiting_anonymous_text") {
     try {
       const sent = await ctx.api.sendMessage(
@@ -448,6 +454,7 @@ function getMenuTexts(lang: Lang) {
       await ctx.reply(tt.sentAnonymous, {
         reply_markup: getMainKeyboard(lang),
       });
+
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply(tt.sendAnonymousError, {
@@ -457,17 +464,25 @@ function getMenuTexts(lang: Lang) {
     return;
   }
 
-  // 3) If awaiting_file but user typed text
+  // typed text while waiting for pdf
   if (state === "awaiting_file") {
-    return ctx.reply(tt.onlyPdf, {
+    await ctx.reply(tt.onlyPdf, {
       reply_markup: getMainKeyboard(lang),
     });
+    return;
   }
 });
 
-// Receiving files/voice/etc. in private chat
-privateChat.on("message", async (ctx, next) => {
-  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+/* ─────────────────────  PRIVATE CHAT: NON-TEXT  ───────────────────── */
+privateChat.on(":message", async (ctx, next) => {
+  if (!ctx.from) return next();
+
+  // let text messages be handled only by message:text
+  if ("text" in ctx.message && typeof ctx.message.text === "string") {
+    return next();
+  }
+
+  if (isBlocked(ctx.from.id)) {
     const lang = getUserLang(ctx.from.id);
     await ctx.reply(t(lang).blocked);
     return;
@@ -477,16 +492,15 @@ privateChat.on("message", async (ctx, next) => {
   const tt = t(lang);
   const state = userStates.get(ctx.from.id);
 
-  if (!state && ctx.chat.type === "private") {
+  if (!state && ctx.chat?.type === "private") {
     await ctx.reply(tt.chooseMenuFirst, {
       reply_markup: getMainKeyboard(lang),
     });
     return;
   }
 
-  const voice = ctx.message?.voice;
+  const voice = "voice" in ctx.message ? ctx.message.voice : undefined;
 
-  // Voice for known flow
   if (voice && state === "awaiting_text") {
     try {
       const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
@@ -503,7 +517,7 @@ privateChat.on("message", async (ctx, next) => {
 
       const copied = await ctx.api.copyMessage(
         TARGET_CHANNEL,
-        ctx.chat.id,
+        ctx.chat!.id,
         ctx.message.message_id,
         { reply_to_message_id: header.message_id },
       );
@@ -514,6 +528,7 @@ privateChat.on("message", async (ctx, next) => {
       await ctx.reply(tt.sentKnown, {
         reply_markup: getMainKeyboard(lang),
       });
+
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply(tt.sendError, {
@@ -523,7 +538,6 @@ privateChat.on("message", async (ctx, next) => {
     return;
   }
 
-  // Voice for anonymous flow
   if (voice && state === "awaiting_anonymous_text") {
     try {
       const header = await ctx.api.sendMessage(
@@ -533,7 +547,7 @@ privateChat.on("message", async (ctx, next) => {
 
       const copied = await ctx.api.copyMessage(
         TARGET_CHANNEL,
-        ctx.chat.id,
+        ctx.chat!.id,
         ctx.message.message_id,
         { reply_to_message_id: header.message_id },
       );
@@ -544,6 +558,7 @@ privateChat.on("message", async (ctx, next) => {
       await ctx.reply(tt.sentAnonymous, {
         reply_markup: getMainKeyboard(lang),
       });
+
       userStates.delete(ctx.from.id);
     } catch {
       await ctx.reply(tt.sendAnonymousError, {
@@ -553,15 +568,14 @@ privateChat.on("message", async (ctx, next) => {
     return;
   }
 
-  // PDF upload flow
   if (state === "awaiting_file") {
-    const doc = ctx.message?.document;
+    const doc = "document" in ctx.message ? ctx.message.document : undefined;
 
     if (doc?.mime_type === "application/pdf") {
       try {
         const sent = await ctx.api.forwardMessage(
           TARGET_CHANNEL,
-          ctx.chat.id,
+          ctx.chat!.id,
           ctx.message.message_id,
         );
 
@@ -570,6 +584,7 @@ privateChat.on("message", async (ctx, next) => {
         await ctx.reply(tt.sentFile, {
           reply_markup: getMainKeyboard(lang),
         });
+
         userStates.delete(ctx.from.id);
       } catch {
         await ctx.reply(tt.fileError, {
