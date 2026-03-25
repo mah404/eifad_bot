@@ -48,7 +48,7 @@ const TEXTS = {
 
 با تشکر`,
 
-    knownMessageBtn: "💬 ارسال پیام با مشخصات",
+    knownMessageBtn: "💬 ارسال پیام به صورت شناس",
     anonymousMessageBtn: "🔒 ارسال پیام به صورت ناشناس",
     pdfBtn: "📄 ارسال فایل PDF",
     placeholder: "لطفاً یکی از گزینه های زیر را انتخاب نمایید.",
