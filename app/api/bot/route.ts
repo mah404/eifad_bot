@@ -388,28 +388,14 @@ privateChat.on("message:text", async (ctx) => {
   const state = userStates.get(ctx.from.id);
 
   /* ────── Menu entries ────── */
-  if (menuTexts.has(text)) {
-    if (text === tt.menuPdf) {
-      userStates.set(ctx.from.id, "awaiting_file");
-      return ctx.reply(tt.askPdf, {
-        reply_markup: getMainKeyboard(lang),
-      });
-    }
-
-    if (text === tt.menuKnown) {
-      userStates.set(ctx.from.id, "awaiting_text");
-      return ctx.reply(tt.askKnown, {
-        reply_markup: getMainKeyboard(lang),
-      });
-    }
-
-    if (text === tt.menuAnonymous) {
-      userStates.set(ctx.from.id, "awaiting_anonymous_text");
-      return ctx.reply(tt.askAnonymous, {
-        reply_markup: getMainKeyboard(lang),
-      });
-    }
-  }
+function getMenuTexts(lang: Lang) {
+  const tt = t(lang);
+  return new Set<string>([
+    tt.menuKnown,
+    tt.menuAnonymous,
+    tt.menuPdf,
+  ]);
+}
 
   /* ────── If no state chosen yet ────── */
   if (!state) {
