@@ -8,27 +8,24 @@ import { type NextRequest } from "next/server";
 
 /* ─────────────────────  ENV & BOT  ───────────────────── */
 const token = process.env.TELEGRAM_BOT_TOKEN;
-if (!token) {
+if (!token)
   throw new Error("TELEGRAM_BOT_TOKEN environment variable not found.");
-}
 
 const bot = new Bot(token);
 
+// ⚠️ Admin group/supergroup chat id (string form, keep the minus):
 const TARGET_CHANNEL = process.env.SUPPORT_GROUP_ID;
-if (!TARGET_CHANNEL) {
-  throw new Error("SUPPORT_GROUP_ID environment variable not found.");
-}
+if (!TARGET_CHANNEL)
+  throw new Error("TARGET_CHANNEL environment variable not found.");
 
-/* ─────────────────────  TYPES & TEMP STATE  ───────────────────── */
+/* ─────────────────────  STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
-type Lang = "fa" | "en";
 
-// توجه: این‌ها روی Vercel پایدار نیستند، ولی فعلاً برای بخش ادمین نگه می‌داریم
-const messageMap = new Map<number, number>();
-const anonCodes = new Map<number, string>();
-const blockedUsers = new Map<number, number | null>();
+const userStates = new Map<number, UserState>(); // per-user flow state (only for private chats)
+const messageMap = new Map<number, number>(); // groupMessageId -> userId (for admin replies)
 
-/* ─────────────────────  HELPERS  ───────────────────── */
+const anonCodes = new Map<number, string>(); // userId -> anonymous code (stable)
+
 function getAnonCode(userId: number) {
   let code = anonCodes.get(userId);
   if (!code) {
@@ -38,6 +35,10 @@ function getAnonCode(userId: number) {
   return code;
 }
 
+/* ─────────────────────  BLOCKING  ───────────────────── */
+// blockedUsers: userId -> untilEpochMs (null = permanent)
+const blockedUsers = new Map<number, number | null>();
+
 function isBlocked(userId: number) {
   const until = blockedUsers.get(userId);
   if (until === undefined) return false;
@@ -45,6 +46,7 @@ function isBlocked(userId: number) {
 
   if (Date.now() < until) return true;
 
+  // expired
   blockedUsers.delete(userId);
   return false;
 }
@@ -58,214 +60,80 @@ function formatRemaining(ms: number) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-/* ─────────────────────  I18N  ───────────────────── */
-const TEXTS = {
-  fa: {
-    chooseLanguage: "لطفاً زبان مورد نظر خود را انتخاب نمایید:",
-    welcome: `با عرض سلام مجدد،
-
-جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید.
-
-با تشکر`,
-    blocked: "❌ دسترسی شما به این بات مسدود شده است.",
-    chooseMenuFirst:
-      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه‌های زیر را انتخاب نمایید ❌",
-    askPdf: "لطفاً فایل PDF خود را ارسال کنید.",
-    askKnown: "پیام شناس‌دار خود را وارد نمایید.",
-    askAnonymous: "پیام ناشناس خود را وارد نمایید.",
-    onlyPdf: "تنها فایل PDF مجاز است. لطفاً فایل خود را ارسال کنید.",
-    onlyPdfRetry: "تنها فایل PDF مجاز است. لطفاً مجدداً امتحان کنید.",
-    sentKnown: "✅ پیام شما ارسال گردید.",
-    sentAnonymous: "✅ پیام ناشناس شما ارسال گردید.",
-    sentFile: "✅ فایل شما ارسال شد. متشکرم!",
-    sendError: "❌ خطا در ارسال پیام. دوباره تلاش کنید.",
-    sendAnonymousError: "❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.",
-    fileError: "❌ خطا در ارسال فایل. دوباره تلاش کنید.",
-    adminReplyPrefix: "پاسخ ادمین:",
-    languageChanged: "✅ زبان فارسی انتخاب شد.",
-    placeholder: "لطفاً یکی از گزینه‌های زیر را انتخاب نمایید.",
-    menuKnown: "💬 ارسال پیام به‌صورت شناس‌دار",
-    menuAnonymous: "🔒 ارسال پیام به‌صورت ناشناس",
-    menuPdf: "📄 ارسال فایل PDF",
-    langFa: "فارسی",
-    langEn: "English",
-    block1hNotice: "❌ امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است ❌",
-    unblockNotice: "✅ محدودیت امکان ارسال پیام برای شما برطرف گردیده است ✅",
-    forwardedKnownHeader: (displayName: string, username: string, userId: number) =>
-      `[LANG:fa]\nTelegram ID: ${userId}\nپیام از ${displayName} (${username}):`,
-    forwardedAnonymousHeader: (userId: number) =>
-      `[LANG:fa]\nTelegram ID: ${userId}\nAnonymous Code: ${getAnonCode(userId)}\nپیام ناشناس:`,
-  },
-  en: {
-    chooseLanguage: "Please choose your preferred language:",
-    welcome: `Welcome back,
-
-Please choose one of the options below to contact us.
-
-Thank you`,
-    blocked: "❌ Your access to this bot has been blocked.",
-    chooseMenuFirst:
-      "❌ Your message was not sent. Please choose one of the options below first. ❌",
-    askPdf: "Please send your PDF file.",
-    askKnown: "Please enter your identified message.",
-    askAnonymous: "Please enter your anonymous message.",
-    onlyPdf: "Only PDF files are allowed. Please send your file.",
-    onlyPdfRetry: "Only PDF files are allowed. Please try again.",
-    sentKnown: "✅ Your message has been sent.",
-    sentAnonymous: "✅ Your anonymous message has been sent.",
-    sentFile: "✅ Your file has been sent. Thank you!",
-    sendError: "❌ Error sending message. Please try again.",
-    sendAnonymousError: "❌ Error sending anonymous message. Please try again.",
-    fileError: "❌ Error sending file. Please try again.",
-    adminReplyPrefix: "Admin reply:",
-    languageChanged: "✅ English language selected.",
-    placeholder: "Please choose one of the options below.",
-    menuKnown: "💬 Send identified message",
-    menuAnonymous: "🔒 Send anonymous message",
-    menuPdf: "📄 Send PDF file",
-    langFa: "فارسی",
-    langEn: "English",
-    block1hNotice: "❌ Your ability to send messages has been restricted for 1 hour. ❌",
-    unblockNotice: "✅ Your messaging restriction has been removed. ✅",
-    forwardedKnownHeader: (displayName: string, username: string, userId: number) =>
-      `[LANG:en]\nTelegram ID: ${userId}\nMessage from ${displayName} (${username}):`,
-    forwardedAnonymousHeader: (userId: number) =>
-      `[LANG:en]\nTelegram ID: ${userId}\nAnonymous Code: ${getAnonCode(userId)}\nAnonymous message:`,
-  },
-} as const;
-
-function t(lang: Lang) {
-  return TEXTS[lang];
-}
-
 /* ─────────────────────  UI  ───────────────────── */
-function getLanguageKeyboard() {
-  return new Keyboard()
-    .text(TEXTS.fa.langFa)
-    .text(TEXTS.fa.langEn)
-    .row()
-    .resized()
-    .persistent(true);
-}
+const mainKeyboard = new Keyboard()
+  .text("💬 ارسال پیام به صورت شناس")
+  .row()
+  .text("🔒 ارسال پیام به صورت ناشناس")
+  .row()
+  .text("📄 ارسال فایل PDF")
+  .row()
+  .resized()
+  .persistent(true)
+  .placeholder(" لطفاً یکی از گزینه های زیر را انتخاب نمایید.");
 
-function getMainKeyboard(lang: Lang) {
-  const tt = t(lang);
-  return new Keyboard()
-    .text(tt.menuKnown)
-    .row()
-    .text(tt.menuAnonymous)
-    .row()
-    .text(tt.menuPdf)
-    .row()
-    .resized()
-    .persistent(true)
-    .placeholder(tt.placeholder);
-}
-
-function getLangFromMenuText(text: string): Lang | null {
-  if (
-    text === TEXTS.en.menuKnown ||
-    text === TEXTS.en.menuAnonymous ||
-    text === TEXTS.en.menuPdf ||
-    text === TEXTS.en.langEn
-  ) {
-    return "en";
-  }
-
-  if (
-    text === TEXTS.fa.menuKnown ||
-    text === TEXTS.fa.menuAnonymous ||
-    text === TEXTS.fa.menuPdf ||
-    text === TEXTS.fa.langFa
-  ) {
-    return "fa";
-  }
-
-  return null;
-}
-
-/* ─────────────────────  REPLY MARKERS  ───────────────────── */
-function makePromptText(lang: Lang, state: UserState) {
-  const tt = t(lang);
-
-  let visible = "";
-  if (state === "awaiting_text") visible = tt.askKnown;
-  if (state === "awaiting_anonymous_text") visible = tt.askAnonymous;
-  if (state === "awaiting_file") visible = tt.askPdf;
-
-  return `${visible}\n\n#CTX:${lang}:${state}`;
-}
-
-function parseReplyContext(text?: string | null): { lang: Lang; state: UserState } | null {
-  if (!text) return null;
-
-  const match = text.match(/#CTX:(fa|en):(awaiting_file|awaiting_text|awaiting_anonymous_text)/);
-  if (!match) return null;
-
-  const lang = match[1] as Lang;
-  const state = match[2] as UserState;
-  return { lang, state };
-}
-
-function parseLangFromAdminMessage(text?: string | null): Lang {
-  if (text?.includes("[LANG:en]")) return "en";
-  return "fa";
-}
+const MENU_TEXTS = new Set([
+  "💬 ارسال پیام به صورت شناس",
+  "🔒 ارسال پیام به صورت ناشناس",
+  "📄 ارسال فایل PDF",
+]);
 
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
-const adminGroup = new Composer();
-const privateChat = new Composer();
+const adminGroup = new Composer(); // messages from the admin group/supergroup
+const privateChat = new Composer(); // messages from private (user) chats
 
 bot.use((ctx, next) => {
   const chatId = ctx.chat?.id?.toString();
   if (!chatId) return next();
 
   if (chatId === TARGET_CHANNEL) {
+    // Admin group
     return adminGroup.middleware()(ctx, next);
   }
 
   if (ctx.chat?.type === "private") {
+    // Private DMs with users
     return privateChat.middleware()(ctx, next);
   }
 
+  // Any other chat types (other groups, channels) → ignore
   return;
 });
 
-/* ─────────────────────  /start & /language  ───────────────────── */
+/* ─────────────────────  /start (private only)  ───────────────────── */
 bot.command("start", async (ctx) => {
-  if (ctx.chat?.type !== "private" || !ctx.from) return;
+  if (ctx.chat?.type !== "private") return; // ignore /start outside private chats
 
-  if (isBlocked(ctx.from.id)) {
-    await ctx.reply(TEXTS.fa.blocked);
+  // blocked users should not use the bot
+  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
     return;
   }
 
-  await ctx.reply(TEXTS.fa.chooseLanguage, {
-    reply_markup: getLanguageKeyboard(),
-  });
+  await ctx.reply(
+    `با عرض سلام مجدد،
+
+جهت برقراری ارتباط یکی از گزینه‌های موجود را انتخاب نمایید. 
+
+با تشکر`,
+    { reply_markup: mainKeyboard },
+  );
 });
 
-bot.command("language", async (ctx) => {
-  if (ctx.chat?.type !== "private" || !ctx.from) return;
-
-  if (isBlocked(ctx.from.id)) {
-    await ctx.reply(TEXTS.fa.blocked);
-    return;
-  }
-
-  await ctx.reply(TEXTS.fa.chooseLanguage, {
-    reply_markup: getLanguageKeyboard(),
-  });
-});
-
-/* ─────────────────────  ADMIN GROUP LOGIC  ───────────────────── */
+/* ─────────────────────  ADMIN GROUP LOGIC  ─────────────────────
+   - Only handle replies to messages that the bot posted (forwarded/sent).
+   - Ignore all non-reply chatter in the group.
+------------------------------------------------------------------ */
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
+
+  // ---------- Admin commands ----------
   const txt = ctx.message.text?.trim();
 
+  // /blockList can be used without reply
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
-      await ctx.reply("لیست مسدودشده‌ها خالی است ✅", {
+      await ctx.reply("لیست مسدود شده‌ها خالی است ✅", {
         reply_to_message_id: ctx.message.message_id,
       });
       return;
@@ -280,31 +148,40 @@ adminGroup.on("message:text", async (ctx) => {
         if (remaining > 0) {
           lines.push(`• ${uid} — باقی‌مانده ${formatRemaining(remaining)}`);
         } else {
+          // expired, cleanup
           blockedUsers.delete(uid);
         }
       }
     }
 
-    await ctx.reply(`لیست مسدودشده‌ها:\n${lines.join("\n")}`, {
+    await ctx.reply(`لیست مسدود شده‌ها:\n${lines.join("\n")}`, {
       reply_to_message_id: ctx.message.message_id,
     });
     return;
   }
 
+  // Commands that must be used by replying to a tracked bot message
   if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
     if (!replied) {
-      await ctx.reply("❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.", {
-        reply_to_message_id: ctx.message.message_id,
-      });
+      await ctx.reply(
+        "❌ لطفاً این دستور را با Reply روی پیام کاربر ارسال کنید.",
+        {
+          reply_to_message_id: ctx.message.message_id,
+        },
+      );
       return;
     }
 
     let uid = messageMap.get(replied.message_id);
 
+    // fallback: extract Telegram ID from message text
     if (!uid) {
-      const repliedText = replied.text || replied.caption;
-      const match = repliedText?.match(/Telegram ID:\s*(\d+)/);
-      if (match) uid = Number(match[1]);
+      const txt = replied.text || replied.caption;
+      const match = txt?.match(/Telegram ID:\s*(\d+)/);
+
+      if (match) {
+        uid = Number(match[1]);
+      }
     }
 
     if (!uid) {
@@ -314,13 +191,14 @@ adminGroup.on("message:text", async (ctx) => {
       return;
     }
 
-    const repliedText = replied.text || replied.caption;
-    const lang = parseLangFromAdminMessage(repliedText);
-
     if (txt === "/block") {
       blockedUsers.set(uid, null);
+      userStates.delete(uid);
       try {
-        await ctx.api.sendMessage(uid, t(lang).blocked);
+        await ctx.api.sendMessage(
+          uid,
+          "❌امکان ارسال پیام برای شما محدود گردیده است❌",
+        );
       } catch {}
       await ctx.reply(`🚫 کاربر ${uid} مسدود شد (دائمی).`, {
         reply_to_message_id: ctx.message.message_id,
@@ -330,8 +208,12 @@ adminGroup.on("message:text", async (ctx) => {
 
     if (txt === "/ban1h") {
       blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
+      userStates.delete(uid);
       try {
-        await ctx.api.sendMessage(uid, t(lang).block1hNotice);
+        await ctx.api.sendMessage(
+          uid,
+          "❌امکان ارسال پیام برای شما به مدت یک ساعت محدود گردیده است❌",
+        );
       } catch {}
       await ctx.reply(`⏳ کاربر ${uid} به مدت ۱ ساعت مسدود شد.`, {
         reply_to_message_id: ctx.message.message_id,
@@ -342,7 +224,10 @@ adminGroup.on("message:text", async (ctx) => {
     if (txt === "/unblock") {
       blockedUsers.delete(uid);
       try {
-        await ctx.api.sendMessage(uid, t(lang).unblockNotice);
+        await ctx.api.sendMessage(
+          uid,
+          "✅محدودیت امکان ارسال پیام برای شما برطرف گردیده است✅",
+        );
       } catch {}
       await ctx.reply(`✅ کاربر ${uid} از حالت مسدود خارج شد.`, {
         reply_to_message_id: ctx.message.message_id,
@@ -351,15 +236,14 @@ adminGroup.on("message:text", async (ctx) => {
     }
   }
 
-  if (!replied) return;
+  // ---------- Normal admin reply-to-user flow ----------
+  if (!replied) return; // ignore normal chatter
 
   const uid = messageMap.get(replied.message_id);
-  if (!uid) return;
-
-  const lang = parseLangFromAdminMessage(replied.text || replied.caption);
+  if (!uid) return; // not a tracked bot message
 
   try {
-    await ctx.api.sendMessage(uid, `${t(lang).adminReplyPrefix}\n${ctx.message.text}`);
+    await ctx.api.sendMessage(uid, `پاسخ ادمین:\n${ctx.message.text}`);
     await ctx.reply("پاسخ برای کاربر ارسال شد ✅", {
       reply_to_message_id: ctx.message.message_id,
     });
@@ -368,180 +252,156 @@ adminGroup.on("message:text", async (ctx) => {
   }
 });
 
+// Ignore any other message types in admin group (stickers, photos, etc.)
 adminGroup.on("message", () => {});
 
-/* ─────────────────────  PRIVATE CHAT: TEXT  ───────────────────── */
+/* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
+// Menu navigation & states
 privateChat.on("message:text", async (ctx) => {
-  if (!ctx.from) return;
-
-  if (isBlocked(ctx.from.id)) {
-    await ctx.reply(TEXTS.fa.blocked);
+  // blocked users should not use the bot
+  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
     return;
   }
 
-  const text = ctx.message.text.trim();
+  const text = ctx.message.text;
+  const state = userStates.get(ctx.from.id);
 
-  // language selection
-  if (text === "English" || text === "فارسی") {
-    const lang: Lang = text === "English" ? "en" : "fa";
-
-    await ctx.reply(`${t(lang).languageChanged}\n\n${t(lang).welcome}`, {
-      reply_markup: getMainKeyboard(lang),
-    });
-    return;
-  }
-
-  // menu clicks
-  const menuLang = getLangFromMenuText(text);
-  if (menuLang) {
-    const tt = t(menuLang);
-
-    if (text === tt.menuKnown) {
-      await ctx.reply(makePromptText(menuLang, "awaiting_text"), {
-        reply_markup: { force_reply: true, input_field_placeholder: tt.askKnown },
+  /* ────── Menu entries (the only way to set a state) ────── */
+  if (MENU_TEXTS.has(text)) {
+    if (text === "📄 ارسال فایل PDF") {
+      userStates.set(ctx.from.id, "awaiting_file");
+      return ctx.reply("لطفاً فایل PDF خود را ارسال کنید.", {
+        reply_markup: mainKeyboard,
       });
-      return;
+    }
+    if (text === "💬 ارسال پیام به صورت شناس") {
+      userStates.set(ctx.from.id, "awaiting_text");
+      return ctx.reply("پیام شناس خود را وارد نمایید.", {
+        reply_markup: mainKeyboard,
+      });
+    }
+    if (text === "🔒 ارسال پیام به صورت ناشناس") {
+      userStates.set(ctx.from.id, "awaiting_anonymous_text");
+      return ctx.reply("پیام ناشناس خود را وارد نمایید.", {
+        reply_markup: mainKeyboard,
+      });
     }
 
-    if (text === tt.menuAnonymous) {
-      await ctx.reply(makePromptText(menuLang, "awaiting_anonymous_text"), {
-        reply_markup: { force_reply: true, input_field_placeholder: tt.askAnonymous },
-      });
-      return;
-    }
-
-    if (text === tt.menuPdf) {
-      await ctx.reply(makePromptText(menuLang, "awaiting_file"), {
-        reply_markup: { force_reply: true, input_field_placeholder: tt.askPdf },
-      });
-      return;
+    // previous option kept, but disabled (not part of UI anymore)
+    if (false && text === "ℹ️ درباره ما") {
+      return ctx.reply(
+        "این پیام‌رسان جهت ارتباط مستقیم با مدیران مجموعه تهیه گردیده است. پیشاپیش از حسن استفاده شما قدردانی می‌نماییم.",
+        { reply_markup: mainKeyboard },
+      );
     }
   }
 
-  // reply-based state detection
-  const replyText = ctx.message.reply_to_message?.text || ctx.message.reply_to_message?.caption;
-  const replyCtx = parseReplyContext(replyText);
-
-  if (!replyCtx) {
-    const guessedLang = getLangFromMenuText(text) || "fa";
-    await ctx.reply(t(guessedLang).chooseMenuFirst, {
-      reply_markup: getMainKeyboard(guessedLang),
-    });
-    return;
+  /* ────── If no state was chosen yet, nudge user to pick a menu item ────── */
+  if (!state) {
+    return ctx.reply(
+      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
+      {
+        reply_markup: mainKeyboard,
+      },
+    );
   }
 
-  const { lang, state } = replyCtx;
-  const tt = t(lang);
+  /* ────── State-based processing ────── */
 
+  // 1) Expecting a normal text message (with identity)
   if (state === "awaiting_text") {
     try {
-      const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
+      const displayName = ctx.from.first_name ?? "کاربر";
       const username = ctx.from.username
         ? `@${ctx.from.username}`
-        : lang === "fa"
-          ? "بدون‌نام کاربری"
-          : "no username";
-
+        : "بدون‌نام کاربری";
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `${tt.forwardedKnownHeader(displayName, username, ctx.from.id)}\n${ctx.message.text}`,
+        `Telegram ID: ${ctx.from.id}\nپیام از ${displayName} (${username}):\n${ctx.message.text}`,
       );
-
       messageMap.set(sent.message_id, ctx.from.id);
-
-      await ctx.reply(tt.sentKnown, {
-        reply_markup: getMainKeyboard(lang),
+      await ctx.reply("پیام شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
       });
-    } catch (error) {
-      console.error("Known text error:", error);
-      await ctx.reply(tt.sendError, {
-        reply_markup: getMainKeyboard(lang),
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
       });
     }
     return;
   }
 
+  // 2) Expecting an anonymous text message
   if (state === "awaiting_anonymous_text") {
     try {
       const sent = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        `${tt.forwardedAnonymousHeader(ctx.from.id)}\n${ctx.message.text}`,
+        `Telegram ID: ${ctx.from.id}
+پیام ناشناس:
+${ctx.message.text}`,
       );
-
       messageMap.set(sent.message_id, ctx.from.id);
-
-      await ctx.reply(tt.sentAnonymous, {
-        reply_markup: getMainKeyboard(lang),
+      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
       });
-    } catch (error) {
-      console.error("Anonymous text error:", error);
-      await ctx.reply(tt.sendAnonymousError, {
-        reply_markup: getMainKeyboard(lang),
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
       });
     }
     return;
   }
 
+  // 3) If state is awaiting_file but user typed text, remind them
   if (state === "awaiting_file") {
-    await ctx.reply(tt.onlyPdf, {
-      reply_markup: getMainKeyboard(lang),
+    return ctx.reply("تنها فایل PDF مجاز است. لطفاً فایل خود را ارسال کنید.", {
+      reply_markup: mainKeyboard,
     });
-    return;
   }
 });
 
-/* ─────────────────────  PRIVATE CHAT: NON-TEXT  ───────────────────── */
+// Receiving files/photos/etc. in private chat
 privateChat.on("message", async (ctx, next) => {
-  if (!ctx.from || !ctx.message) return next();
-
-  // text messages فقط در message:text
-  if ("text" in ctx.message && typeof ctx.message.text === "string") {
-    return next();
-  }
-
-  if (isBlocked(ctx.from.id)) {
-    await ctx.reply(TEXTS.fa.blocked);
+  // blocked users should not use the bot
+  if (ctx.from?.id && isBlocked(ctx.from.id)) {
+    await ctx.reply("❌ دسترسی شما به این بات مسدود شده است.");
     return;
   }
 
-  const replyText =
-    ("reply_to_message" in ctx.message && ctx.message.reply_to_message
-      ? ctx.message.reply_to_message.text || ctx.message.reply_to_message.caption
-      : undefined);
+  const state = userStates.get(ctx.from.id);
 
-  const replyCtx = parseReplyContext(replyText);
-
-  if (!replyCtx && ctx.chat?.type === "private") {
-    await ctx.reply(TEXTS.fa.chooseMenuFirst, {
-      reply_markup: getMainKeyboard("fa"),
-    });
+  // If no state set yet, only nudge once for any non-menu input
+  if (!state && ctx.chat.type === "private") {
+    await ctx.reply(
+      "❌ این پیام شما ارسال نگردید، لطفاً یکی از گزینه های زیر را انتخاب نمایید❌",
+      {
+        reply_markup: mainKeyboard,
+      },
+    );
     return;
   }
 
-  if (!replyCtx) return next();
-
-  const { lang, state } = replyCtx;
-  const tt = t(lang);
-
-  const voice = "voice" in ctx.message ? ctx.message.voice : undefined;
+  // Handle VOICE messages for known/anonymous flows
+  const voice = ctx.message?.voice;
 
   if (voice && state === "awaiting_text") {
     try {
-      const displayName = ctx.from.first_name ?? (lang === "fa" ? "کاربر" : "User");
+      const displayName = ctx.from.first_name ?? "کاربر";
       const username = ctx.from.username
         ? `@${ctx.from.username}`
-        : lang === "fa"
-          ? "بدون‌نام کاربری"
-          : "no username";
+        : "بدون‌نام کاربری";
 
       const header = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        tt.forwardedKnownHeader(displayName, username, ctx.from.id),
+        `Telegram ID: ${ctx.from.id}\nپیام از ${displayName} (${username}):`,
       );
 
       const copied = await ctx.api.copyMessage(
         TARGET_CHANNEL,
-        ctx.chat!.id,
+        ctx.chat.id,
         ctx.message.message_id,
         { reply_to_message_id: header.message_id },
       );
@@ -549,13 +409,13 @@ privateChat.on("message", async (ctx, next) => {
       messageMap.set(header.message_id, ctx.from.id);
       messageMap.set(copied.message_id, ctx.from.id);
 
-      await ctx.reply(tt.sentKnown, {
-        reply_markup: getMainKeyboard(lang),
+      await ctx.reply("پیام شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
       });
-    } catch (error) {
-      console.error("Known voice error:", error);
-      await ctx.reply(tt.sendError, {
-        reply_markup: getMainKeyboard(lang),
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
       });
     }
     return;
@@ -565,12 +425,12 @@ privateChat.on("message", async (ctx, next) => {
     try {
       const header = await ctx.api.sendMessage(
         TARGET_CHANNEL,
-        tt.forwardedAnonymousHeader(ctx.from.id),
+        `Telegram ID: ${ctx.from.id}\nپیام ناشناس:`,
       );
 
       const copied = await ctx.api.copyMessage(
         TARGET_CHANNEL,
-        ctx.chat!.id,
+        ctx.chat.id,
         ctx.message.message_id,
         { reply_to_message_id: header.message_id },
       );
@@ -578,45 +438,43 @@ privateChat.on("message", async (ctx, next) => {
       messageMap.set(header.message_id, ctx.from.id);
       messageMap.set(copied.message_id, ctx.from.id);
 
-      await ctx.reply(tt.sentAnonymous, {
-        reply_markup: getMainKeyboard(lang),
+      await ctx.reply("پیام ناشناس شما ارسال گردید.✅", {
+        reply_markup: mainKeyboard,
       });
-    } catch (error) {
-      console.error("Anonymous voice error:", error);
-      await ctx.reply(tt.sendAnonymousError, {
-        reply_markup: getMainKeyboard(lang),
+      userStates.delete(ctx.from.id);
+    } catch {
+      await ctx.reply("❌ خطا در ارسال پیام ناشناس. دوباره تلاش کنید.", {
+        reply_markup: mainKeyboard,
       });
     }
     return;
   }
 
+  // Handle the PDF upload state
   if (state === "awaiting_file") {
-    const doc = "document" in ctx.message ? ctx.message.document : undefined;
-
+    const doc = ctx.message?.document;
     if (doc?.mime_type === "application/pdf") {
       try {
         const sent = await ctx.api.forwardMessage(
           TARGET_CHANNEL,
-          ctx.chat!.id,
+          ctx.chat.id,
           ctx.message.message_id,
         );
-
         messageMap.set(sent.message_id, ctx.from.id);
-
-        await ctx.reply(tt.sentFile, {
-          reply_markup: getMainKeyboard(lang),
+        await ctx.reply("فایل شما ارسال شد. متشکرم!", {
+          reply_markup: mainKeyboard,
         });
-      } catch (error) {
-        console.error("PDF error:", error);
-        await ctx.reply(tt.fileError, {
-          reply_markup: getMainKeyboard(lang),
+        userStates.delete(ctx.from.id);
+      } catch {
+        await ctx.reply("❌ خطا در ارسال فایل. دوباره تلاش کنید.", {
+          reply_markup: mainKeyboard,
         });
       }
       return;
     }
 
-    await ctx.reply(tt.onlyPdfRetry, {
-      reply_markup: getMainKeyboard(lang),
+    await ctx.reply("تنها فایل PDF مجاز است. لطفاً مجدداً امتحان کنید.", {
+      reply_markup: mainKeyboard,
     });
     return;
   }
