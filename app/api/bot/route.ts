@@ -19,6 +19,30 @@ if (!TARGET_CHANNEL) {
   throw new Error("SUPPORT_GROUP_ID environment variable not found.");
 }
 
+const BALE_TOKEN = process.env.BALE_BOT_TOKEN;
+
+if (!BALE_TOKEN) {
+  throw new Error("BALE_BOT_TOKEN environment variable not found.");
+}
+
+async function sendToBale(chatId: string, text: string) {
+  const res = await fetch(
+    `https://tapi.bale.ai/bot${BALE_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+      }),
+    }
+  );
+
+  return res.json();
+}
+
 /* ─────────────────────  TYPES & STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 type Lang = "fa" | "en";
@@ -251,7 +275,32 @@ bot.use((ctx, next) => {
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
+// Reply Telegram -> Bale
+if (replied && txt) {
+  const replyText = replied.text || replied.caption || "";
 
+  const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
+
+  if (baleMatch) {
+    const baleChatId = baleMatch[1];
+
+    try {
+      await sendToBale(baleChatId, txt);
+
+      await ctx.reply("✅ Reply sent to Bale user", {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    } catch (err) {
+      console.error(err);
+
+      await ctx.reply("❌ Failed sending reply to Bale user", {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    }
+
+    return;
+  }
+}
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
