@@ -19,27 +19,6 @@ if (!TARGET_CHANNEL) {
   throw new Error("SUPPORT_GROUP_ID environment variable not found.");
 }
 
-const BALE_TOKEN = process.env.BALE_BOT_TOKEN;
-
-if (!BALE_TOKEN) {
-  throw new Error("BALE_BOT_TOKEN environment variable not found.");
-}
-
-async function sendToBale(chatId: string, text: string) {
-  const res = await fetch(`https://tapi.bale.ai/bot${BALE_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-    }),
-  });
-
-  return res.json();
-}
-
 /* ─────────────────────  TYPES & STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 type Lang = "fa" | "en";
@@ -149,7 +128,8 @@ Thank you`,
     pdfSent: "Your file has been sent. Thank you!",
 
     sendError: "❌ Error sending message. Please try again.",
-    anonymousSendError: "❌ Error sending anonymous message. Please try again.",
+    anonymousSendError:
+      "❌ Error sending anonymous message. Please try again.",
     fileSendError: "❌ Error sending file. Please try again.",
 
     pdfOnly: "Only PDF files are allowed. Please send your PDF file.",
@@ -168,8 +148,7 @@ Thank you`,
     permanent: "Permanent",
     remaining: "Remaining",
 
-    blockedPermanentUser:
-      "❌ Your ability to send messages has been blocked. ❌",
+    blockedPermanentUser: "❌ Your ability to send messages has been blocked. ❌",
     blocked1hUser:
       "❌ Your ability to send messages has been blocked for 1 hour. ❌",
     unblockedUser: "✅ Your messaging restriction has been removed. ✅",
@@ -249,18 +228,6 @@ function formatRemaining(ms: number) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-bot.on("message", async (ctx, next) => {
-  console.log("CHAT ID:", ctx.chat.id);
-  console.log("CHAT TYPE:", ctx.chat.type);
-  console.log("TEXT:", ctx.message.text);
-
-  if (ctx.message.text === "/id") {
-    await ctx.reply(`Chat ID is: ${ctx.chat.id}`);
-  }
-
-  return next();
-});
-
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
 const adminGroup = new Composer();
 const privateChat = new Composer();
@@ -280,45 +247,10 @@ bot.use((ctx, next) => {
   return next();
 });
 
-adminGroup.command("test", async (ctx) => {
-  await ctx.reply("✅ admin group works");
-});
 /* ─────────────────────  ADMIN GROUP LOGIC  ───────────────────── */
 adminGroup.on("message:text", async (ctx) => {
-  console.log("ADMIN GROUP MESSAGE RECEIVED:", ctx.message.text);
-  console.log("CHAT ID:", ctx.chat.id);
-  console.log("TARGET_CHANNEL:", TARGET_CHANNEL);
-  console.log("HAS REPLY:", !!ctx.message.reply_to_message);
-
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
-
-  // Reply Telegram -> Bale
-  if (replied && txt) {
-    const replyText = replied.text || replied.caption || "";
-
-    const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
-
-    if (baleMatch) {
-      const baleChatId = baleMatch[1];
-
-      try {
-        await sendToBale(baleChatId, txt);
-
-        await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      } catch (err) {
-        console.error(err);
-
-        await ctx.reply("❌ خطا در ارسال پاسخ برای کاربر بله", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      }
-
-      return;
-    }
-  }
 
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
@@ -363,8 +295,8 @@ adminGroup.on("message:text", async (ctx) => {
     let uid = messageMap.get(replied.message_id);
 
     if (!uid) {
-      const replyText = replied.text || replied.caption || "";
-      const match = replyText.match(/Telegram\s*ID\s*:\s*(\d+)/i);
+      const replyText = replied.text || replied.caption;
+      const match = replyText?.match(/Telegram ID:\s*(\d+)/);
       if (match) {
         uid = Number(match[1]);
       }
@@ -420,26 +352,8 @@ adminGroup.on("message:text", async (ctx) => {
 
   if (!replied) return;
 
-  let uid = messageMap.get(replied.message_id);
-
-  if (!uid) {
-    const replyText = replied.text || replied.caption || "";
-    const match = replyText.match(/Telegram\s*ID\s*:\s*(\d+)/i);
-
-    if (match) {
-      uid = Number(match[1]);
-    }
-  }
-
-  if (!uid) {
-    await ctx.reply(
-      "❌ کاربر پیدا نشد. لطفاً روی پیام اصلی که Telegram ID دارد ریپلای کنید.",
-      {
-        reply_to_message_id: ctx.message.message_id,
-      },
-    );
-    return;
-  }
+  const uid = messageMap.get(replied.message_id);
+  if (!uid) return;
 
   const lang = getUserLang(uid);
 
@@ -448,18 +362,16 @@ adminGroup.on("message:text", async (ctx) => {
       uid,
       `${TEXTS[lang].adminReplyPrefix}${ctx.message.text}`,
     );
-
     await ctx.reply(TEXTS[lang].adminReplySent, {
       reply_to_message_id: ctx.message.message_id,
     });
-  } catch (err) {
-    console.error("SEND TO TELEGRAM USER ERROR:", err);
-
+  } catch {
     await ctx.reply(TEXTS[lang].adminReplyError, {
       reply_to_message_id: ctx.message.message_id,
     });
   }
 });
+
 adminGroup.on("message", () => {});
 
 /* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
