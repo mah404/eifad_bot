@@ -252,40 +252,6 @@ adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
 
-  /* =========================
-     BALE REPLY SUPPORT
-     ========================= */
-
-  if (replied && txt) {
-    const replyText = replied.text || replied.caption || "";
-
-    const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
-
-    if (baleMatch) {
-      const baleChatId = baleMatch[1];
-
-      try {
-        await sendToBale(baleChatId, txt);
-
-        await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      } catch (err) {
-        console.error("BALE SEND ERROR:", err);
-
-        await ctx.reply("❌ ارسال پاسخ به کاربر بله ناموفق بود", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      }
-
-      return;
-    }
-  }
-
-  /* =========================
-     EXISTING COMMANDS
-     ========================= */
-
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
@@ -295,7 +261,6 @@ adminGroup.on("message:text", async (ctx) => {
     }
 
     const lines: string[] = [];
-
     for (const [uid, until] of blockedUsers.entries()) {
       const lang = getUserLang(uid);
 
@@ -303,10 +268,9 @@ adminGroup.on("message:text", async (ctx) => {
         lines.push(`• ${uid} — ${TEXTS[lang].permanent}`);
       } else {
         const remaining = until - Date.now();
-
         if (remaining > 0) {
           lines.push(
-            `• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(remaining)}`
+            `• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(remaining)}`,
           );
         } else {
           blockedUsers.delete(uid);
@@ -317,7 +281,6 @@ adminGroup.on("message:text", async (ctx) => {
     await ctx.reply(`${TEXTS.fa.blockListTitle}\n${lines.join("\n")}`, {
       reply_to_message_id: ctx.message.message_id,
     });
-
     return;
   }
 
@@ -326,7 +289,6 @@ adminGroup.on("message:text", async (ctx) => {
       await ctx.reply(TEXTS.fa.useReplyForCommand, {
         reply_to_message_id: ctx.message.message_id,
       });
-
       return;
     }
 
@@ -335,7 +297,6 @@ adminGroup.on("message:text", async (ctx) => {
     if (!uid) {
       const replyText = replied.text || replied.caption;
       const match = replyText?.match(/Telegram ID:\s*(\d+)/);
-
       if (match) {
         uid = Number(match[1]);
       }
@@ -345,7 +306,6 @@ adminGroup.on("message:text", async (ctx) => {
       await ctx.reply(TEXTS.fa.userNotFound, {
         reply_to_message_id: ctx.message.message_id,
       });
-
       return;
     }
 
@@ -354,53 +314,38 @@ adminGroup.on("message:text", async (ctx) => {
     if (txt === "/block") {
       blockedUsers.set(uid, null);
       userStates.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].blockedPermanentUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].blockedPermanentAdmin.replace("%UID%", String(uid)),
-        {
-          reply_to_message_id: ctx.message.message_id,
-        }
+        { reply_to_message_id: ctx.message.message_id },
       );
-
       return;
     }
 
     if (txt === "/ban1h") {
       blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
       userStates.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].blocked1hUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].blocked1hAdmin.replace("%UID%", String(uid)),
-        {
-          reply_to_message_id: ctx.message.message_id,
-        }
+        { reply_to_message_id: ctx.message.message_id },
       );
-
       return;
     }
 
     if (txt === "/unblock") {
       blockedUsers.delete(uid);
-
       try {
         await ctx.api.sendMessage(uid, TEXTS[lang].unblockedUser);
       } catch {}
-
       await ctx.reply(
         TEXTS[lang].unblockedAdmin.replace("%UID%", String(uid)),
-        {
-          reply_to_message_id: ctx.message.message_id,
-        }
+        { reply_to_message_id: ctx.message.message_id },
       );
-
       return;
     }
   }
@@ -408,7 +353,6 @@ adminGroup.on("message:text", async (ctx) => {
   if (!replied) return;
 
   const uid = messageMap.get(replied.message_id);
-
   if (!uid) return;
 
   const lang = getUserLang(uid);
@@ -416,9 +360,8 @@ adminGroup.on("message:text", async (ctx) => {
   try {
     await ctx.api.sendMessage(
       uid,
-      `${TEXTS[lang].adminReplyPrefix}${ctx.message.text}`
+      `${TEXTS[lang].adminReplyPrefix}${ctx.message.text}`,
     );
-
     await ctx.reply(TEXTS[lang].adminReplySent, {
       reply_to_message_id: ctx.message.message_id,
     });
