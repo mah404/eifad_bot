@@ -272,32 +272,34 @@ bot.use((ctx, next) => {
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
+
   // Reply Telegram -> Bale
   if (replied && txt) {
     const replyText = replied.text || replied.caption || "";
 
     const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
 
-if (baleMatch) {
-  const baleChatId = baleMatch[1];
+    if (baleMatch) {
+      const baleChatId = baleMatch[1];
 
-  try {
-    await sendToBale(baleChatId, txt);
+      try {
+        await sendToBale(baleChatId, txt);
 
-    await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
-      reply_to_message_id: ctx.message.message_id,
-    });
-  } catch (err) {
-    console.error(err);
+        await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
+          reply_to_message_id: ctx.message.message_id,
+        });
+      } catch (err) {
+        console.error(err);
 
-    await ctx.reply("❌ خطا در ارسال پاسخ برای کاربر بله", {
-      reply_to_message_id: ctx.message.message_id,
-    });
+        await ctx.reply("❌ خطا در ارسال پاسخ برای کاربر بله", {
+          reply_to_message_id: ctx.message.message_id,
+        });
+      }
+
+      return;
+    }
   }
 
-  return;
-}
-  }
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
@@ -341,8 +343,8 @@ if (baleMatch) {
     let uid = messageMap.get(replied.message_id);
 
     if (!uid) {
-      const replyText = replied.text || replied.caption;
-      const match = replyText?.match(/Telegram ID:\s*(\d+)/);
+      const replyText = replied.text || replied.caption || "";
+      const match = replyText.match(/Telegram\s*ID\s*:\s*(\d+)/i);
       if (match) {
         uid = Number(match[1]);
       }
@@ -398,8 +400,23 @@ if (baleMatch) {
 
   if (!replied) return;
 
-  const uid = messageMap.get(replied.message_id);
-  if (!uid) return;
+  let uid = messageMap.get(replied.message_id);
+
+  if (!uid) {
+    const replyText = replied.text || replied.caption || "";
+    const match = replyText.match(/Telegram\s*ID\s*:\s*(\d+)/i);
+
+    if (match) {
+      uid = Number(match[1]);
+    }
+  }
+
+  if (!uid) {
+    await ctx.reply("❌ کاربر پیدا نشد. لطفاً روی پیام اصلی که Telegram ID دارد ریپلای کنید.", {
+      reply_to_message_id: ctx.message.message_id,
+    });
+    return;
+  }
 
   const lang = getUserLang(uid);
 
@@ -408,16 +425,18 @@ if (baleMatch) {
       uid,
       `${TEXTS[lang].adminReplyPrefix}${ctx.message.text}`,
     );
+
     await ctx.reply(TEXTS[lang].adminReplySent, {
       reply_to_message_id: ctx.message.message_id,
     });
-  } catch {
+  } catch (err) {
+    console.error("SEND TO TELEGRAM USER ERROR:", err);
+
     await ctx.reply(TEXTS[lang].adminReplyError, {
       reply_to_message_id: ctx.message.message_id,
     });
   }
 });
-
 adminGroup.on("message", () => {});
 
 /* ─────────────────────  PRIVATE CHAT LOGIC  ───────────────────── */
