@@ -278,25 +278,25 @@ adminGroup.on("message:text", async (ctx) => {
 
     const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
 
-    if (baleMatch) {
-      const baleChatId = baleMatch[1];
+if (baleMatch) {
+  const baleChatId = baleMatch[1];
 
-      try {
-        await sendToBale(baleChatId, txt);
+  try {
+    await sendToBale(baleChatId, txt);
 
-        await ctx.reply("✅ Reply sent to Bale user", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      } catch (err) {
-        console.error(err);
+    await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
+      reply_to_message_id: ctx.message.message_id,
+    });
+  } catch (err) {
+    console.error(err);
 
-        await ctx.reply("❌ Failed sending reply to Bale user", {
-          reply_to_message_id: ctx.message.message_id,
-        });
-      }
+    await ctx.reply("❌ خطا در ارسال پاسخ برای کاربر بله", {
+      reply_to_message_id: ctx.message.message_id,
+    });
+  }
 
-      return;
-    }
+  return;
+}
   }
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
