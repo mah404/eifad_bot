@@ -270,6 +270,11 @@ bot.use((ctx, next) => {
 
 /* ─────────────────────  ADMIN GROUP LOGIC  ───────────────────── */
 adminGroup.on("message:text", async (ctx) => {
+  console.log("ADMIN GROUP MESSAGE RECEIVED:", ctx.message.text);
+  console.log("CHAT ID:", ctx.chat.id);
+  console.log("TARGET_CHANNEL:", TARGET_CHANNEL);
+  console.log("HAS REPLY:", !!ctx.message.reply_to_message);
+
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
 
@@ -412,9 +417,12 @@ adminGroup.on("message:text", async (ctx) => {
   }
 
   if (!uid) {
-    await ctx.reply("❌ کاربر پیدا نشد. لطفاً روی پیام اصلی که Telegram ID دارد ریپلای کنید.", {
-      reply_to_message_id: ctx.message.message_id,
-    });
+    await ctx.reply(
+      "❌ کاربر پیدا نشد. لطفاً روی پیام اصلی که Telegram ID دارد ریپلای کنید.",
+      {
+        reply_to_message_id: ctx.message.message_id,
+      },
+    );
     return;
   }
 
@@ -720,5 +728,3 @@ privateChat.on("message", async (ctx, next) => {
 export async function POST(req: NextRequest) {
   return webhookCallback(bot, "std/http")(req);
 }
-
-
