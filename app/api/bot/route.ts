@@ -19,6 +19,31 @@ if (!TARGET_CHANNEL) {
   throw new Error("SUPPORT_GROUP_ID environment variable not found.");
 }
 
+const baleToken = process.env.BALE_BOT_TOKEN;
+if (!baleToken) {
+  throw new Error("BALE_BOT_TOKEN environment variable not found.");
+}
+
+async function sendToBale(chatId: string, text: string) {
+  const res = await fetch(`https://tapi.bale.ai/bot${baleToken}/sendMessage`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Failed to send message to Bale: ${res.status} ${errorText}`);
+  }
+
+  return res.json();
+}
+
 /* ─────────────────────  TYPES & STATE  ───────────────────── */
 type UserState = "awaiting_file" | "awaiting_text" | "awaiting_anonymous_text";
 type Lang = "fa" | "en";
@@ -351,6 +376,31 @@ adminGroup.on("message:text", async (ctx) => {
   }
 
   if (!replied) return;
+
+  // Reply to messages that came from Bale and send the admin answer back to Bale.
+  // Works with messages that contain a line like: "Bale Chat ID: 604951470"
+  const repliedText = replied.text || replied.caption || "";
+  const baleMatch = repliedText.match(/Bale\s*Chat\s*ID:\s*(\d+)/i);
+
+  if (baleMatch) {
+    const baleChatId = baleMatch[1];
+
+    try {
+      await sendToBale(baleChatId, ctx.message.text);
+
+      await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    } catch (err) {
+      console.error("BALE SEND ERROR:", err);
+
+      await ctx.reply("❌ ارسال پاسخ به کاربر بله ناموفق بود", {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    }
+
+    return;
+  }
 
   const uid = messageMap.get(replied.message_id);
   if (!uid) return;
