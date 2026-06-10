@@ -37,7 +37,11 @@ async function sendToBale(chatId: string, text: string) {
     }),
   });
 
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    throw new Error(`Bale API error: ${JSON.stringify(data)}`);
+  }
+  return data;
 }
 
 /* ─────────────────────  TYPES & STATE  ───────────────────── */
@@ -272,32 +276,8 @@ bot.use((ctx, next) => {
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
-  // Reply Telegram -> Bale
-  if (replied && txt) {
-    const replyText = replied.text || replied.caption || "";
 
-    const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
-
-if (baleMatch) {
-  const baleChatId = baleMatch[1];
-
-  try {
-    await sendToBale(baleChatId, txt);
-
-    await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
-      reply_to_message_id: ctx.message.message_id,
-    });
-  } catch (err) {
-    console.error(err);
-
-    await ctx.reply("❌ خطا در ارسال پاسخ برای کاربر بله", {
-      reply_to_message_id: ctx.message.message_id,
-    });
-  }
-
-  return;
-}
-  }
+  // ── /blockList ──
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
@@ -309,15 +289,12 @@ if (baleMatch) {
     const lines: string[] = [];
     for (const [uid, until] of blockedUsers.entries()) {
       const lang = getUserLang(uid);
-
       if (until === null) {
         lines.push(`• ${uid} — ${TEXTS[lang].permanent}`);
       } else {
         const remaining = until - Date.now();
         if (remaining > 0) {
-          lines.push(
-            `• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(remaining)}`,
-          );
+          lines.push(`• ${uid} — ${TEXTS[lang].remaining} ${formatRemaining(remaining)}`);
         } else {
           blockedUsers.delete(uid);
         }
@@ -330,6 +307,7 @@ if (baleMatch) {
     return;
   }
 
+  // ── /block, /unblock, /ban1h ──
   if (txt === "/block" || txt === "/unblock" || txt === "/ban1h") {
     if (!replied) {
       await ctx.reply(TEXTS.fa.useReplyForCommand, {
@@ -339,13 +317,10 @@ if (baleMatch) {
     }
 
     let uid = messageMap.get(replied.message_id);
-
     if (!uid) {
       const replyText = replied.text || replied.caption;
       const match = replyText?.match(/Telegram ID:\s*(\d+)/);
-      if (match) {
-        uid = Number(match[1]);
-      }
+      if (match) uid = Number(match[1]);
     }
 
     if (!uid) {
@@ -360,54 +335,70 @@ if (baleMatch) {
     if (txt === "/block") {
       blockedUsers.set(uid, null);
       userStates.delete(uid);
-      try {
-        await ctx.api.sendMessage(uid, TEXTS[lang].blockedPermanentUser);
-      } catch {}
-      await ctx.reply(
-        TEXTS[lang].blockedPermanentAdmin.replace("%UID%", String(uid)),
-        { reply_to_message_id: ctx.message.message_id },
-      );
+      try { await ctx.api.sendMessage(uid, TEXTS[lang].blockedPermanentUser); } catch {}
+      await ctx.reply(TEXTS[lang].blockedPermanentAdmin.replace("%UID%", String(uid)), {
+        reply_to_message_id: ctx.message.message_id,
+      });
       return;
     }
 
     if (txt === "/ban1h") {
       blockedUsers.set(uid, Date.now() + 60 * 60 * 1000);
       userStates.delete(uid);
-      try {
-        await ctx.api.sendMessage(uid, TEXTS[lang].blocked1hUser);
-      } catch {}
-      await ctx.reply(
-        TEXTS[lang].blocked1hAdmin.replace("%UID%", String(uid)),
-        { reply_to_message_id: ctx.message.message_id },
-      );
+      try { await ctx.api.sendMessage(uid, TEXTS[lang].blocked1hUser); } catch {}
+      await ctx.reply(TEXTS[lang].blocked1hAdmin.replace("%UID%", String(uid)), {
+        reply_to_message_id: ctx.message.message_id,
+      });
       return;
     }
 
     if (txt === "/unblock") {
       blockedUsers.delete(uid);
-      try {
-        await ctx.api.sendMessage(uid, TEXTS[lang].unblockedUser);
-      } catch {}
-      await ctx.reply(
-        TEXTS[lang].unblockedAdmin.replace("%UID%", String(uid)),
-        { reply_to_message_id: ctx.message.message_id },
-      );
+      try { await ctx.api.sendMessage(uid, TEXTS[lang].unblockedUser); } catch {}
+      await ctx.reply(TEXTS[lang].unblockedAdmin.replace("%UID%", String(uid)), {
+        reply_to_message_id: ctx.message.message_id,
+      });
       return;
     }
   }
 
-  if (!replied) return;
+  // ── Must be a reply to forward to a user ──
+  if (!replied || !txt) return;
 
-  const uid = messageMap.get(replied.message_id);
+  const replyText = replied.text || replied.caption || "";
+
+  // ── Reply to Bale user ──
+  const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
+  if (baleMatch) {
+    const baleChatId = baleMatch[1];
+    try {
+      await sendToBale(baleChatId, txt);
+      await ctx.reply("✅ پاسخ برای کاربر بله ارسال شد", {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    } catch (err) {
+      console.error("Bale error:", err);
+      await ctx.reply(`❌ خطا در ارسال پاسخ برای کاربر بله\n${String(err)}`, {
+        reply_to_message_id: ctx.message.message_id,
+      });
+    }
+    return;
+  }
+
+  // ── Reply to Telegram user ──
+  // First try messageMap (in-memory), then fall back to Telegram ID in message text
+  let uid = messageMap.get(replied.message_id);
+  if (!uid) {
+    const match = replyText.match(/Telegram ID:\s*(\d+)/);
+    if (match) uid = Number(match[1]);
+  }
+
   if (!uid) return;
 
   const lang = getUserLang(uid);
 
   try {
-    await ctx.api.sendMessage(
-      uid,
-      `${TEXTS[lang].adminReplyPrefix}${ctx.message.text}`,
-    );
+    await ctx.api.sendMessage(uid, `${TEXTS[lang].adminReplyPrefix}${txt}`);
     await ctx.reply(TEXTS[lang].adminReplySent, {
       reply_to_message_id: ctx.message.message_id,
     });
@@ -431,11 +422,9 @@ privateChat.on("message:text", async (ctx) => {
     return;
   }
 
-  // Handle /start HERE to avoid middleware-order problems
   if (text === "/start" || text.startsWith("/start ")) {
     userStates.delete(ctx.from.id);
     userLangs.delete(ctx.from.id);
-
     await ctx.reply(TEXTS.fa.chooseLanguage, {
       reply_markup: buildLanguageKeyboard(),
     });
@@ -447,7 +436,6 @@ privateChat.on("message:text", async (ctx) => {
   if (text === "فارسی") {
     userLangs.set(ctx.from.id, "fa");
     userStates.delete(ctx.from.id);
-
     await ctx.reply(TEXTS.fa.startMessage, {
       reply_markup: buildMainKeyboard("fa"),
     });
@@ -457,7 +445,6 @@ privateChat.on("message:text", async (ctx) => {
   if (text === "English") {
     userLangs.set(ctx.from.id, "en");
     userStates.delete(ctx.from.id);
-
     await ctx.reply(TEXTS.en.startMessage, {
       reply_markup: buildMainKeyboard("en"),
     });
@@ -509,8 +496,7 @@ privateChat.on("message:text", async (ctx) => {
 
   if (state === "awaiting_text") {
     try {
-      const displayName =
-        ctx.from.first_name ?? TEXTS[currentLang].userFallbackName;
+      const displayName = ctx.from.first_name ?? TEXTS[currentLang].userFallbackName;
       const username = ctx.from.username
         ? `@${ctx.from.username}`
         : TEXTS[currentLang].noUsername;
