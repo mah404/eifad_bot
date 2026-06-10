@@ -249,6 +249,18 @@ function formatRemaining(ms: number) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+bot.on("message", async (ctx, next) => {
+  console.log("CHAT ID:", ctx.chat.id);
+  console.log("CHAT TYPE:", ctx.chat.type);
+  console.log("TEXT:", ctx.message.text);
+
+  if (ctx.message.text === "/id") {
+    await ctx.reply(`Chat ID is: ${ctx.chat.id}`);
+  }
+
+  return next();
+});
+
 /* ─────────────────────  ROUTING BY CHAT  ───────────────────── */
 const adminGroup = new Composer();
 const privateChat = new Composer();
