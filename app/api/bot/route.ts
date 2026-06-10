@@ -26,19 +26,16 @@ if (!BALE_TOKEN) {
 }
 
 async function sendToBale(chatId: string, text: string) {
-  const res = await fetch(
-    `https://tapi.bale.ai/bot${BALE_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-      }),
-    }
-  );
+  const res = await fetch(`https://tapi.bale.ai/bot${BALE_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+    }),
+  });
 
   return res.json();
 }
@@ -152,8 +149,7 @@ Thank you`,
     pdfSent: "Your file has been sent. Thank you!",
 
     sendError: "❌ Error sending message. Please try again.",
-    anonymousSendError:
-      "❌ Error sending anonymous message. Please try again.",
+    anonymousSendError: "❌ Error sending anonymous message. Please try again.",
     fileSendError: "❌ Error sending file. Please try again.",
 
     pdfOnly: "Only PDF files are allowed. Please send your PDF file.",
@@ -172,7 +168,8 @@ Thank you`,
     permanent: "Permanent",
     remaining: "Remaining",
 
-    blockedPermanentUser: "❌ Your ability to send messages has been blocked. ❌",
+    blockedPermanentUser:
+      "❌ Your ability to send messages has been blocked. ❌",
     blocked1hUser:
       "❌ Your ability to send messages has been blocked for 1 hour. ❌",
     unblockedUser: "✅ Your messaging restriction has been removed. ✅",
@@ -275,32 +272,32 @@ bot.use((ctx, next) => {
 adminGroup.on("message:text", async (ctx) => {
   const replied = ctx.message.reply_to_message;
   const txt = ctx.message.text?.trim();
-// Reply Telegram -> Bale
-if (replied && txt) {
-  const replyText = replied.text || replied.caption || "";
+  // Reply Telegram -> Bale
+  if (replied && txt) {
+    const replyText = replied.text || replied.caption || "";
 
-  const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
+    const baleMatch = replyText.match(/Bale Chat ID:\s*(\d+)/);
 
-  if (baleMatch) {
-    const baleChatId = baleMatch[1];
+    if (baleMatch) {
+      const baleChatId = baleMatch[1];
 
-    try {
-      await sendToBale(baleChatId, txt);
+      try {
+        await sendToBale(baleChatId, txt);
 
-      await ctx.reply("✅ Reply sent to Bale user", {
-        reply_to_message_id: ctx.message.message_id,
-      });
-    } catch (err) {
-      console.error(err);
+        await ctx.reply("✅ Reply sent to Bale user", {
+          reply_to_message_id: ctx.message.message_id,
+        });
+      } catch (err) {
+        console.error(err);
 
-      await ctx.reply("❌ Failed sending reply to Bale user", {
-        reply_to_message_id: ctx.message.message_id,
-      });
+        await ctx.reply("❌ Failed sending reply to Bale user", {
+          reply_to_message_id: ctx.message.message_id,
+        });
+      }
+
+      return;
     }
-
-    return;
   }
-}
   if (txt === "/blockList") {
     if (blockedUsers.size === 0) {
       await ctx.reply(TEXTS.fa.blockListEmpty, {
