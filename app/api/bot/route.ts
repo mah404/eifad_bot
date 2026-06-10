@@ -268,6 +268,9 @@ bot.use((ctx, next) => {
   return next();
 });
 
+adminGroup.command("test", async (ctx) => {
+  await ctx.reply("✅ admin group works");
+});
 /* ─────────────────────  ADMIN GROUP LOGIC  ───────────────────── */
 adminGroup.on("message:text", async (ctx) => {
   console.log("ADMIN GROUP MESSAGE RECEIVED:", ctx.message.text);
